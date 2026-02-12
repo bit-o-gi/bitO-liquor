@@ -3,7 +3,7 @@
 ## 프로젝트 구조 및 모듈 구성
 이 저장소는 백엔드와 프론트엔드를 함께 관리하는 모노레포입니다.
 - `backend/`: Java 21, Spring Boot 멀티모듈 서비스
-- `frontend/`: React 19 + TypeScript + Vite 웹 애플리케이션
+- `frontend/`: React 19 + TypeScript + Vite 웹 애플리케이션 (현재 mock 데이터 기반)
 
 백엔드 모듈:
 - `backend/common`: 공통 도메인 모델, DTO, Repository
@@ -15,6 +15,11 @@
 - `frontend/src/types`: 타입 정의
 - `frontend/src/data`: 목 데이터
 - `frontend/public/images`: 정적 이미지
+
+데이터/도메인 참고:
+- 핵심 상품 테이블은 `public.liquors`입니다.
+- `public.whisky` 테이블은 제거되었습니다.
+- `/api/whisky/lowest` 엔드포인트는 `liquors` 기반 호환 API입니다.
 
 ## 빌드, 테스트, 개발 명령어
 백엔드 (`backend/`에서 실행):
@@ -38,7 +43,7 @@
 ## 테스트 가이드
 - 백엔드 테스트는 `backend/*/src/test/java`에서 Spring Boot Test + JUnit Platform을 사용합니다.
 - 테스트 클래스명은 `*Tests` 패턴을 권장합니다(예: `ApiApplicationTests`).
-- PR 전 최소 `./gradlew test`를 실행하세요.
+- PR 전 최소 `./gradlew test`를 실행하세요. 단, DB 환경변수/로컬 설정이 없으면 `contextLoads`가 실패할 수 있습니다.
 - 프론트엔드는 현재 린트 중심입니다. 테스트를 추가하면 `src/` 근처에 배치하고 실행 명령을 `frontend/package.json`에 명시하세요.
 
 ## 커밋 및 PR 가이드
@@ -52,4 +57,5 @@
 
 ## 보안 및 설정 팁
 - 비밀값은 커밋하지 말고 환경변수(`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`)를 사용하세요.
+- 로컬 개발 시 `backend/api/src/main/resources/application-local.properties.example` 및 `backend/crawler/src/main/resources/application-local.properties.example`를 복사해 `application-local.properties`를 만드세요.
 - 크롤러는 Selenium/Chrome 의존성이 있으므로 크롤러 관련 변경 전 로컬 Chrome 환경을 확인하세요.
