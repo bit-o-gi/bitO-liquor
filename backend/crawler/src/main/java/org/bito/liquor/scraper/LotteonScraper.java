@@ -2,7 +2,6 @@ package org.bito.liquor.scraper;
 
 import lombok.extern.slf4j.Slf4j;
 import org.bito.liquor.common.model.Liquor;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
@@ -13,10 +12,11 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.stereotype.Component;
 
-import java.io.FileWriter;
-import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,8 +25,32 @@ import java.util.regex.Pattern;
 @Component
 public class LotteonScraper {
 
-    private static final String SEARCH_URL = "https://www.lotteon.com/search/search/search.ecn?render=search&platform=pc&q=%EC%9C%84%EC%8A%A4%ED%82%A4";
+    private static final String SEARCH_URL_TEMPLATE = "https://www.lotteon.com/search/search/search.ecn?render=search&platform=pc&q=%s";
     private static final String SOURCE = "LOTTEON";
+    private static final int MIN_MATCH_SCORE = 30;
+
+    private static final List<String> TARGET_KEYWORDS = Arrays.asList(
+            "산토리 가쿠빈",
+            "그란츠 트리플 우드",
+            "맥캘란 12 더블 캐스크",
+            "발베니 12 더블우드",
+            "시바스 리갈 12년",
+            "조니워커 블랙 라벨",
+            "글렌드로낙 12년",
+            "벨즈",
+            "와일드 터키 101",
+            "짐 빔 화이트 라벨",
+            "제임슨",
+            "조니워커 블론드",
+            "맥캘란 15년",
+            "조니워커 골드 라벨",
+            "아드벡 10년",
+            "글렌피딕 12년",
+            "글렌리벳 12년",
+            "버팔로 트레이스",
+            "라가불린 16년",
+            "로얄 살루트 21년"
+    );
 
     public List<Liquor> scrapeLiquors() {
         List<Liquor> liquors = new ArrayList<>();
@@ -34,36 +58,50 @@ public class LotteonScraper {
 
         try {
             driver = createWebDriver();
-            log.info("Starting Lotteon whisky page crawling: {}", SEARCH_URL);
 
-            driver.get(SEARCH_URL);
+            for (String keyword : TARGET_KEYWORDS) {
+                try {
+                    String encodedKeyword = URLEncoder.encode(keyword, StandardCharsets.UTF_8);
+                    String searchUrl = String.format(SEARCH_URL_TEMPLATE, encodedKeyword);
+                    log.info("키워드 검색 중: '{}' | URL: {}", keyword, searchUrl);
 
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+                    driver.get(searchUrl);
 
-            try {
-                wait.until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector("[class*='product'], [class*='srchProduct'], li[data-index]")));
-            } catch (Exception e) {
-                log.warn("Product element wait timeout, attempting page source analysis");
+                    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+                    try {
+                        wait.until(ExpectedConditions.presenceOfElementLocated(
+                                By.cssSelector("[class*='product'], [class*='srchProduct'], li[data-index]")));
+                    } catch (Exception e) {
+                        log.warn("'{}' 검색 결과 대기 타임아웃", keyword);
+                    }
+
+                    Thread.sleep(3000);
+
+                    String pageSource = driver.getPageSource();
+                    Liquor liquor = parseFirstFromScript(pageSource);
+
+                    if (!isAcceptableMatch(keyword, liquor)) {
+                        liquor = parseBestFromDOM(driver, keyword);
+                    }
+
+                    if (liquor != null) {
+                        liquors.add(liquor);
+                        log.info("'{}' → 상품 수집 성공: {} - {}원", keyword, liquor.getName(), liquor.getCurrentPrice());
+                    } else {
+                        log.warn("'{}' → 검색 결과 없음", keyword);
+                    }
+
+                    Thread.sleep((long) (Math.random() * 1500) + 1500);
+
+                } catch (Exception e) {
+                    log.error("'{}' 검색 중 오류: {}", keyword, e.getMessage());
+                }
             }
 
-            Thread.sleep(5000);
-
-            String pageSource = driver.getPageSource();
-
-            saveDebugPageSource(pageSource);
-
-            liquors = parseFromScript(pageSource);
-
-            if (liquors.isEmpty()) {
-                log.info("Script parsing failed, attempting DOM parsing");
-                liquors = parseFromDOM(driver);
-            }
-
-            log.info("Crawling completed: {} products collected", liquors.size());
+            log.info("롯데온 크롤링 완료: 총 {}개 상품 수집", liquors.size());
 
         } catch (Exception e) {
-            log.error("Error during crawling: {}", e.getMessage(), e);
+            log.error("크롤링 중 치명적 오류: {}", e.getMessage(), e);
         } finally {
             if (driver != null) {
                 driver.quit();
@@ -87,160 +125,70 @@ public class LotteonScraper {
         return new ChromeDriver(options);
     }
 
-    private List<Liquor> parseFromScript(String pageSource) {
-        List<Liquor> liquors = new ArrayList<>();
-
+    private Liquor parseFirstFromScript(String pageSource) {
         try {
             Pattern dataItemPattern = Pattern.compile("data-item=\"\\{([^}]+)\\}\"");
             Matcher matcher = dataItemPattern.matcher(pageSource);
 
-            int count = 0;
-            while (matcher.find() && count < 100) {
-                try {
-                    String jsonStr = "{" + matcher.group(1) + "}";
-                    jsonStr = jsonStr.replace("&quot;", "\"")
-                                     .replace("&amp;", "&")
-                                     .replace("&lt;", "<")
-                                     .replace("&gt;", ">");
+            if (matcher.find()) {
+                String jsonStr = "{" + matcher.group(1) + "}";
+                jsonStr = jsonStr.replace("&quot;", "\"")
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">");
 
-                    JSONObject item = new JSONObject(jsonStr);
+                JSONObject item = new JSONObject(jsonStr);
 
-                    String itemName = item.optString("item_name", "");
-                    if (itemName.isEmpty()) continue;
+                String itemName = item.optString("item_name", "");
+                if (itemName.isEmpty()) return null;
 
-                    int price = item.optInt("price", 0);
-                    int discount = item.optInt("discount", 0);
-                    String itemId = item.optString("item_id", "");
+                int price = item.optInt("price", 0);
+                int discount = item.optInt("discount", 0);
+                String itemId = item.optString("item_id", "");
 
-                    Liquor.LiquorBuilder builder = Liquor.builder()
-                            .productCode(itemId.isEmpty() ? "LOTTEON_" + System.currentTimeMillis() + "_" + count : itemId)
-                            .name(itemName)
-                            .currentPrice(price)
-                            .originalPrice(discount > 0 ? price + discount : price)
-                            .source(SOURCE);
+                Liquor liquor = Liquor.builder()
+                        .productCode(itemId.isEmpty() ? "LOTTEON_" + System.currentTimeMillis() : "LOTTEON_" + itemId)
+                        .name(itemName)
+                        .currentPrice(price)
+                        .originalPrice(discount > 0 ? price + discount : price)
+                        .source(SOURCE)
+                        .build();
 
-                    Liquor liquor = builder.build();
-                    extractDetailsFromName(liquor);
-
-                    liquors.add(liquor);
-                    count++;
-                    log.debug("Product parsing success: {} - {} KRW", itemName, price);
-                } catch (Exception e) {
-                    log.debug("data-item parsing failed: {}", e.getMessage());
-                }
-            }
-
-            if (count > 0) {
-                log.info("Parsed {} products from data-item", count);
-            } else {
-                log.warn("No products found in data-item");
+                extractDetailsFromName(liquor);
+                return liquor;
             }
         } catch (Exception e) {
-            log.warn("Script parsing failed: {}", e.getMessage());
+            log.debug("Script 파싱 실패: {}", e.getMessage());
         }
-
-        return liquors;
+        return null;
     }
 
-    private Liquor parseProduct(JSONObject product) {
-        try {
-            String name = product.optString("productName", "");
-            if (name.isEmpty()) {
-                name = product.optString("prdNm", "");
-            }
-            if (name.isEmpty()) return null;
-
-            Liquor.LiquorBuilder builder = Liquor.builder()
-                    .name(name)
-                    .source(SOURCE);
-
-            String productCode = product.optString("productCode", "");
-            if (productCode.isEmpty()) {
-                productCode = product.optString("prdNo", "");
-            }
-            if (productCode.isEmpty()) {
-                productCode = "LOTTEON_" + System.currentTimeMillis() + "_" + Math.random();
-            }
-            builder.productCode(productCode);
-
-            if (product.has("priceInfo")) {
-                Object priceInfo = product.get("priceInfo");
-                if (priceInfo instanceof JSONArray) {
-                    JSONArray prices = (JSONArray) priceInfo;
-                    if (prices.length() > 0) {
-                        JSONObject price = prices.getJSONObject(0);
-                        builder.currentPrice(price.optInt("num", 0));
-                    }
-                } else if (priceInfo instanceof JSONObject) {
-                    builder.currentPrice(((JSONObject) priceInfo).optInt("num", 0));
-                }
-            } else {
-                builder.currentPrice(product.optInt("salePrice", product.optInt("price", 0)));
-            }
-
-            builder.originalPrice(product.optInt("normalPrice", product.optInt("originPrice", 0)));
-
-            String imageUrl = product.optString("productImage", "");
-            if (imageUrl.isEmpty()) {
-                imageUrl = product.optString("prdImg", "");
-            }
-            builder.imageUrl(imageUrl);
-
-            String productLink = product.optString("productLink", "");
-            if (productLink.isEmpty()) {
-                productLink = product.optString("prdUrl", "");
-            }
-            if (!productLink.isEmpty() && !productLink.startsWith("http")) {
-                productLink = "https://www.lotteon.com" + productLink;
-            }
-            builder.productUrl(productLink);
-
-            Liquor liquor = builder.build();
-            extractDetailsFromName(liquor);
-
-            return liquor;
-        } catch (Exception e) {
-            log.debug("Product parsing error: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private List<Liquor> parseFromDOM(WebDriver driver) {
-        List<Liquor> liquors = new ArrayList<>();
-
-        try {
-            String[] selectors = {
+    private Liquor parseBestFromDOM(WebDriver driver, String keyword) {
+        Liquor best = null;
+        int bestScore = Integer.MIN_VALUE;
+        String[] selectors = {
                 "li[data-index]",
                 ".srchProductItem",
                 "[class*='productItem']",
                 ".product-list li",
                 "[class*='prd-item']"
-            };
+        };
 
-            List<WebElement> productElements = new ArrayList<>();
-            for (String selector : selectors) {
-                productElements = driver.findElements(By.cssSelector(selector));
-                if (!productElements.isEmpty()) {
-                    log.info("Found {} elements with selector '{}'", productElements.size(), selector);
-                    break;
-                }
-            }
-
-            for (WebElement element : productElements) {
-                try {
-                    Liquor liquor = extractFromElement(element);
-                    if (liquor != null && liquor.getName() != null && !liquor.getName().isEmpty()) {
-                        liquors.add(liquor);
+        for (String selector : selectors) {
+            List<WebElement> elements = driver.findElements(By.cssSelector(selector));
+            if (!elements.isEmpty()) {
+                int limit = Math.min(elements.size(), 20);
+                for (int i = 0; i < limit; i++) {
+                    Liquor liquor = extractFromElement(elements.get(i));
+                    int score = calculateMatchScore(keyword, liquor);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = liquor;
                     }
-                } catch (Exception e) {
-                    log.debug("Element parsing failed: {}", e.getMessage());
                 }
             }
-        } catch (Exception e) {
-            log.warn("DOM parsing failed: {}", e.getMessage());
         }
-
-        return liquors;
+        return bestScore >= MIN_MATCH_SCORE ? best : null;
     }
 
     private Liquor extractFromElement(WebElement element) {
@@ -278,7 +226,7 @@ public class LotteonScraper {
             Pattern pattern = Pattern.compile("/product/([A-Za-z0-9]+)");
             Matcher matcher = pattern.matcher(href);
             if (matcher.find()) {
-                builder.productCode(matcher.group(1));
+                builder.productCode("LOTTEON_" + matcher.group(1));
             } else {
                 builder.productCode("LOTTEON_" + System.currentTimeMillis());
             }
@@ -288,8 +236,92 @@ public class LotteonScraper {
 
         Liquor liquor = builder.build();
         extractDetailsFromName(liquor);
-
         return liquor;
+    }
+
+    private boolean isAcceptableMatch(String keyword, Liquor liquor) {
+        return calculateMatchScore(keyword, liquor) >= MIN_MATCH_SCORE;
+    }
+
+    private int calculateMatchScore(String keyword, Liquor liquor) {
+        if (liquor == null || liquor.getName() == null || liquor.getName().isBlank()) {
+            return Integer.MIN_VALUE;
+        }
+
+        String name = liquor.getName();
+        String normalizedKeyword = normalizeForMatch(keyword);
+        String normalizedName = normalizeForMatch(name);
+        int score = 0;
+
+        if (normalizedName.contains(normalizedKeyword)) {
+            score += 100;
+        }
+
+        for (String token : keyword.split("\\s+")) {
+            String normalizedToken = normalizeForMatch(token);
+            if (normalizedToken.length() < 2) {
+                continue;
+            }
+            if (normalizedName.contains(normalizedToken)) {
+                score += 18;
+            } else {
+                score -= 6;
+            }
+        }
+
+        if (containsLiquorHint(name)) {
+            score += 25;
+        }
+        if (containsAccessoryHint(name)) {
+            score -= 80;
+        }
+
+        return score;
+    }
+
+    private boolean containsLiquorHint(String name) {
+        String lower = name.toLowerCase();
+        return lower.contains("위스키")
+                || lower.contains("whisky")
+                || lower.contains("whiskey")
+                || lower.contains("버번")
+                || lower.contains("스카치")
+                || lower.contains("single malt")
+                || lower.contains("싱글몰트");
+    }
+
+    private boolean containsAccessoryHint(String name) {
+        String lower = name.toLowerCase();
+        return lower.contains("잔")
+                || lower.contains("글라스")
+                || lower.contains("머그")
+                || lower.contains("컵")
+                || lower.contains("치약")
+                || lower.contains("원피스")
+                || lower.contains("팬츠")
+                || lower.contains("스푼");
+    }
+
+    private String normalizeForMatch(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.toLowerCase()
+                .replace(" ", "")
+                .replace("더블우드", "더블 우드")
+                .replace("더블캐스크", "더블 캐스크")
+                .replace("트리플우드", "트리플 우드")
+                .replace("블랙라벨", "블랙 라벨")
+                .replace("골드라벨", "골드 라벨")
+                .replace("화이트라벨", "화이트 라벨")
+                .replace("버팔로트레이스", "버팔로 트레이스")
+                .replace("와일드터키", "와일드 터키")
+                .replace("조니워커", "조니 워커")
+                .replace("시바스리갈", "시바스 리갈")
+                .replace("로얄살루트", "로얄 살루트")
+                .replace("짐빔", "짐 빔")
+                .replace("맥켈란", "맥캘란")
+                .replaceAll("[^0-9a-z가-힣]", "");
     }
 
     private void extractDetailsFromName(Liquor liquor) {
@@ -297,11 +329,17 @@ public class LotteonScraper {
 
         String name = liquor.getName();
 
+        // fullname = 원본 상품명 그대로
+        liquor.setFullname(name);
+
         String[] brands = {"조니워커", "발렌타인", "글렌피딕", "글렌리벳", "맥캘란", "잭다니엘",
                 "짐빔", "와일드터키", "메이커스마크", "시바스리갈", "로얄살루트", "윈저",
+                "산토리", "그란츠", "발베니", "글렌드로낙", "아드벡", "라가불린", "버팔로트레이스",
+                "제임슨", "벨즈",
                 "Johnnie Walker", "Ballantine", "Glenfiddich", "Glenlivet", "Macallan",
                 "Jack Daniel", "Jim Beam", "Wild Turkey", "Maker's Mark", "Chivas Regal",
-                "조니 워커", "잭 다니엘", "글렌 피딕"};
+                "조니 워커", "잭 다니엘", "글렌 피딕", "짐 빔", "와일드 터키",
+                "시바스 리갈", "로얄 살루트", "버팔로 트레이스"};
 
         for (String brand : brands) {
             if (name.toLowerCase().contains(brand.toLowerCase())) {
@@ -346,31 +384,16 @@ public class LotteonScraper {
         } else if (lowerName.contains("테킬라") || lowerName.contains("tequila")) {
             liquor.setCategory("Tequila");
         } else {
-            liquor.setCategory("Liquor");
+            liquor.setCategory("Whisky");
         }
-    }
 
-    private void saveDebugPageSource(String pageSource) {
-        try {
-            String filePath = "debug_lotteon_page.html";
-            try (FileWriter writer = new FileWriter(filePath)) {
-                writer.write(pageSource);
-            }
-            log.info("Debug page source saved: {}", filePath);
-
-            if (pageSource.contains("productName")) {
-                log.info("'productName' keyword found in page");
-            }
-            if (pageSource.contains("initialData")) {
-                log.info("'initialData' keyword found in page");
-            }
-            if (pageSource.contains("srchProduct")) {
-                log.info("'srchProduct' keyword found in page");
-            }
-
-            log.info("Page source length: {} characters", pageSource.length());
-        } catch (IOException e) {
-            log.warn("Failed to save debug file: {}", e.getMessage());
+        // clazz = 브랜드 + 용량 정보 제거한 나머지
+        String clazz = name;
+        if (liquor.getBrand() != null) {
+            clazz = clazz.replace(liquor.getBrand(), "").trim();
         }
+        clazz = clazz.replaceAll("\\d+\\s*(ml|ML|mL|L|l|리터)", "").trim();
+        clazz = clazz.replaceAll("\\s+", " ").trim();
+        liquor.setClazz(clazz);
     }
 }
