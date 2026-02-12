@@ -42,6 +42,10 @@ public class LiquorQueryService {
         return liquorRepository.findByCurrentPriceLessThanOrderByCurrentPriceAsc(maxPrice);
     }
 
+    public List<Liquor> getLowestPriceWhiskies() {
+        return liquorRepository.findLowestPriceWhiskies();
+    }
+
     public List<PriceHistory> getPriceHistory(Long liquorId) {
         return priceHistoryRepository.findByLiquorIdOrderByRecordedAtDesc(liquorId);
     }

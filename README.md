@@ -114,12 +114,10 @@ liquor-backend/
 │   │   └── LiquorDto.java              # 응답 DTO
 │   ├── model/
 │   │   ├── Liquor.java                 # 주류 엔티티
-│   │   ├── PriceHistory.java           # 가격 이력 엔티티
-│   │   └── Whisky.java                 # 위스키 엔티티
+│   │   └── PriceHistory.java           # 가격 이력 엔티티
 │   └── repository/
 │       ├── LiquorRepository.java
-│       ├── PriceHistoryRepository.java
-│       └── WhiskyRepository.java
+│       └── PriceHistoryRepository.java
 ├── api/src/main/java/org/bito/liquor/
 │   ├── ApiApplication.java             # API 메인 애플리케이션
 │   ├── config/
@@ -128,8 +126,7 @@ liquor-backend/
 │   │   ├── LiquorController.java       # 주류 조회 API
 │   │   └── WhiskyController.java       # 위스키 조회 API
 │   └── service/
-│       ├── LiquorQueryService.java     # 주류 조회 서비스
-│       └── WhiskyQueryService.java     # 위스키 조회 서비스
+│       └── LiquorQueryService.java     # 주류 조회 서비스
 └── crawler/src/main/java/org/bito/liquor/
     ├── CrawlerApplication.java         # 크롤러 메인 애플리케이션
     ├── controller/
