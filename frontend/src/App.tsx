@@ -1,9 +1,46 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchLiquors } from "./api/liquorApi";
 import FeaturedPick from "./components/FeaturedPick";
 import LiquorGrid from "./components/LiquorGrid";
+import type { GroupedLiquor, Liquor } from "./types/liquor";
+import { groupLiquors } from "./utils/groupLiquors";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [liquors, setLiquors] = useState<Liquor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const data = await fetchLiquors(searchQuery, controller.signal);
+        if (!controller.signal.aborted) {
+          setLiquors(data);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setError("데이터를 불러오지 못했습니다. API 서버 상태를 확인해주세요.");
+          setLiquors([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [searchQuery]);
+
+  const groupedLiquors: GroupedLiquor[] = useMemo(() => groupLiquors(liquors), [liquors]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -50,8 +87,13 @@ export default function App() {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {!searchQuery && <FeaturedPick />}
-        <LiquorGrid searchQuery={searchQuery} />
+        {!searchQuery && !loading && !error && <FeaturedPick liquors={groupedLiquors} />}
+        <LiquorGrid
+          searchQuery={searchQuery}
+          liquors={groupedLiquors}
+          loading={loading}
+          error={error}
+        />
       </main>
     </div>
   );

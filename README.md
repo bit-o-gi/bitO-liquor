@@ -81,11 +81,6 @@ npm run preview
 ```bash
 curl http://localhost:8080/api/liquors
 curl "http://localhost:8080/api/liquors/search?q=조니워커"
-curl http://localhost:8080/api/liquors/brand/조니워커
-curl http://localhost:8080/api/liquors/category/Whisky
-curl "http://localhost:8080/api/liquors/cheap?max=50000"
-curl http://localhost:8080/api/liquors/1/history
-curl http://localhost:8080/api/whisky/lowest
 ```
 
 크롤링 API (`:8081`):

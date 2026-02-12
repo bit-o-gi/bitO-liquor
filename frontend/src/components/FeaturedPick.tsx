@@ -1,45 +1,15 @@
-import { useMemo } from "react";
-import { mockLiquors } from "../data/mockLiquors";
 import type { GroupedLiquor } from "../types/liquor";
 
 function formatPrice(price: number) {
   return price.toLocaleString("ko-KR") + "원";
 }
 
-function getBestDeal(): GroupedLiquor | null {
-  const map = new Map<string, GroupedLiquor>();
-
-  for (const l of mockLiquors) {
-    if (!map.has(l.name)) {
-      map.set(l.name, {
-        name: l.name,
-        brand: l.brand,
-        category: l.category,
-        country: l.country,
-        alcohol_percent: l.alcohol_percent,
-        volume: l.volume,
-        image_url: l.image_url,
-        vendors: [],
-        lowest_price: Infinity,
-      });
-    }
-    const g = map.get(l.name)!;
-    g.vendors.push({
-      source: l.source,
-      current_price: l.current_price,
-      original_price: l.original_price,
-      product_url: l.product_url,
-    });
-    if (l.current_price < g.lowest_price) {
-      g.lowest_price = l.current_price;
-    }
-  }
-
+function getBestDeal(liquors: GroupedLiquor[]): GroupedLiquor | null {
   // 할인율이 가장 높은 상품 선택
   let best: GroupedLiquor | null = null;
   let bestDiscount = 0;
 
-  for (const g of map.values()) {
+  for (const g of liquors) {
     for (const v of g.vendors) {
       if (v.original_price > v.current_price) {
         const discount = (v.original_price - v.current_price) / v.original_price;
@@ -54,8 +24,12 @@ function getBestDeal(): GroupedLiquor | null {
   return best;
 }
 
-export default function FeaturedPick() {
-  const pick = useMemo(() => getBestDeal(), []);
+interface FeaturedPickProps {
+  liquors: GroupedLiquor[];
+}
+
+export default function FeaturedPick({ liquors }: FeaturedPickProps) {
+  const pick = getBestDeal(liquors);
 
   if (!pick) return null;
 
