@@ -1,0 +1,14 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+dependencies {
+    implementation project(':common')
+
+    // Crawling libraries
+    implementation 'org.jsoup:jsoup:1.17.2'
+    implementation 'org.json:json:20231013'
+
+    // Selenium
+    implementation 'org.seleniumhq.selenium:selenium-java:4.27.0'
+}
