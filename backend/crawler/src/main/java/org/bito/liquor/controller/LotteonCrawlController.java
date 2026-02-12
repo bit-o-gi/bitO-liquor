@@ -2,7 +2,7 @@ package org.bito.liquor.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.bito.liquor.common.dto.LiquorDto;
-import org.bito.liquor.common.model.Liquor;
+import org.bito.liquor.common.model.LiquorPrice;
 import org.bito.liquor.service.LotteonCrawlService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,7 +22,7 @@ public class LotteonCrawlController {
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> scrapeLiquors() {
-        List<Liquor> liquors = lotteonCrawlService.scrapeLiquors();
+        List<LiquorPrice> liquors = lotteonCrawlService.scrapeLiquors();
 
         Map<String, Object> response = new HashMap<>();
         response.put("message", "롯데온 크롤링이 완료되었습니다.");

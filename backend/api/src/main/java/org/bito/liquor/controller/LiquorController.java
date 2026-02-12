@@ -3,7 +3,7 @@ package org.bito.liquor.controller;
 import lombok.RequiredArgsConstructor;
 import org.bito.liquor.common.dto.LiquorDto;
 import org.bito.liquor.common.dto.PriceHistoryDto;
-import org.bito.liquor.common.model.Liquor;
+import org.bito.liquor.common.model.LiquorPrice;
 import org.bito.liquor.service.LiquorQueryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +19,7 @@ public class LiquorController {
 
     @GetMapping
     public ResponseEntity<List<LiquorDto>> getAllLiquors() {
-        List<Liquor> liquors = liquorQueryService.getAllLiquors();
+        List<LiquorPrice> liquors = liquorQueryService.getAllLiquors();
         return ResponseEntity.ok(liquors.stream().map(LiquorDto::from).toList());
     }
 
@@ -32,26 +32,26 @@ public class LiquorController {
 
     @GetMapping("/search")
     public ResponseEntity<List<LiquorDto>> searchLiquors(@RequestParam("q") String keyword) {
-        List<Liquor> liquors = liquorQueryService.searchLiquors(keyword);
+        List<LiquorPrice> liquors = liquorQueryService.searchLiquors(keyword);
         return ResponseEntity.ok(liquors.stream().map(LiquorDto::from).toList());
     }
 
     @GetMapping("/brand/{brand}")
     public ResponseEntity<List<LiquorDto>> getLiquorsByBrand(@PathVariable String brand) {
-        List<Liquor> liquors = liquorQueryService.getLiquorsByBrand(brand);
+        List<LiquorPrice> liquors = liquorQueryService.getLiquorsByBrand(brand);
         return ResponseEntity.ok(liquors.stream().map(LiquorDto::from).toList());
     }
 
     @GetMapping("/category/{category}")
     public ResponseEntity<List<LiquorDto>> getLiquorsByCategory(@PathVariable String category) {
-        List<Liquor> liquors = liquorQueryService.getLiquorsByCategory(category);
+        List<LiquorPrice> liquors = liquorQueryService.getLiquorsByCategory(category);
         return ResponseEntity.ok(liquors.stream().map(LiquorDto::from).toList());
     }
 
     @GetMapping("/cheap")
     public ResponseEntity<List<LiquorDto>> getCheapLiquors(
             @RequestParam(value = "max", defaultValue = "50000") Integer maxPrice) {
-        List<Liquor> liquors = liquorQueryService.getCheapLiquors(maxPrice);
+        List<LiquorPrice> liquors = liquorQueryService.getCheapLiquors(maxPrice);
         return ResponseEntity.ok(liquors.stream().map(LiquorDto::from).toList());
     }
 

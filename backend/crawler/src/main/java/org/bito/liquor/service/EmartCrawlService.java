@@ -3,28 +3,27 @@ package org.bito.liquor.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bito.liquor.common.model.Liquor;
-import org.bito.liquor.common.model.PriceHistory;
+import org.bito.liquor.common.model.LiquorPrice;
 import org.bito.liquor.common.repository.LiquorRepository;
-import org.bito.liquor.common.repository.PriceHistoryRepository;
+import org.bito.liquor.common.repository.LiquorPriceRepository;
 import org.bito.liquor.scraper.EmartScraper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmartCrawlService {
+    private static final String NORMALIZED_SOURCE = "EMART";
 
     private final LiquorRepository liquorRepository;
-    private final PriceHistoryRepository priceHistoryRepository;
+    private final LiquorPriceRepository liquorPriceRepository;
     private final EmartScraper emartScraper;
 
     @Transactional
-    public List<Liquor> scrapeLiquors() {
+    public List<LiquorPrice> scrapeLiquors() {
         log.info("이마트 양주 크롤링 시작");
 
         List<Liquor> scrapedLiquors = emartScraper.scrapeLiquors();
@@ -33,50 +32,82 @@ public class EmartCrawlService {
         int updateCount = 0;
 
         for (Liquor scraped : scrapedLiquors) {
-            Optional<Liquor> existing = liquorRepository.findByProductCode(scraped.getProductCode());
+            normalizeLiquor(scraped, NORMALIZED_SOURCE);
 
-            if (existing.isPresent()) {
-                Liquor liquor = existing.get();
+            Liquor liquor = upsertLiquor(scraped);
+            boolean existed = liquorPriceRepository.findByLiquorIdAndSource(liquor.getId(), NORMALIZED_SOURCE).isPresent();
+            upsertLiquorPrice(liquor, scraped);
 
-                if (liquor.getCurrentPrice() != null &&
-                        !liquor.getCurrentPrice().equals(scraped.getCurrentPrice())) {
-                    savePriceHistory(liquor);
-                }
-
-                liquor.setName(scraped.getName());
-                liquor.setCurrentPrice(scraped.getCurrentPrice());
-                liquor.setOriginalPrice(scraped.getOriginalPrice());
-                liquor.setImageUrl(scraped.getImageUrl());
-                liquor.setProductUrl(scraped.getProductUrl());
-                liquor.setBrand(scraped.getBrand());
-                liquor.setCategory(scraped.getCategory());
-                liquor.setVolume(scraped.getVolume());
-                liquor.setAlcoholPercent(scraped.getAlcoholPercent());
-                liquor.setCountry(scraped.getCountry());
-
-                liquorRepository.save(liquor);
+            if (existed) {
                 updateCount++;
             } else {
-                liquorRepository.save(scraped);
                 newCount++;
             }
         }
 
         log.info("이마트 크롤링 완료 - 신규: {}개, 업데이트: {}개", newCount, updateCount);
 
-        return liquorRepository.findAllByOrderByUpdatedAtDesc();
+        return liquorPriceRepository.findAllOrderByUpdatedAtDesc();
     }
 
-    @Transactional
-    public void savePriceHistory(Liquor liquor) {
-        if (liquor.getCurrentPrice() != null) {
-            PriceHistory history = PriceHistory.builder()
-                    .liquor(liquor)
-                    .price(liquor.getCurrentPrice())
-                    .recordedAt(LocalDateTime.now())
-                    .build();
-            priceHistoryRepository.save(history);
-            log.debug("가격 이력 저장: {} - {}원", liquor.getName(), liquor.getCurrentPrice());
+    private void normalizeLiquor(Liquor liquor, String source) {
+        liquor.setSource(source);
+        liquor.setNormalizedName(liquor.getName() == null ? null : liquor.getName().trim().toLowerCase());
+        if (liquor.getCurrentPrice() != null && liquor.getCurrentPrice() <= 0) {
+            liquor.setCurrentPrice(null);
         }
+        if (liquor.getOriginalPrice() != null && liquor.getOriginalPrice() <= 0) {
+            liquor.setOriginalPrice(null);
+        }
+        if (liquor.getCurrentPrice() == null && liquor.getOriginalPrice() != null) {
+            liquor.setCurrentPrice(liquor.getOriginalPrice());
+        }
+        if (liquor.getOriginalPrice() == null && liquor.getCurrentPrice() != null) {
+            liquor.setOriginalPrice(liquor.getCurrentPrice());
+        }
+        if (liquor.getCurrentPrice() != null && liquor.getOriginalPrice() != null
+                && liquor.getOriginalPrice() < liquor.getCurrentPrice()) {
+            liquor.setOriginalPrice(liquor.getCurrentPrice());
+        }
+    }
+
+    private Liquor upsertLiquor(Liquor scraped) {
+        String normalizedName = scraped.getNormalizedName();
+        String clazz = scraped.getClazz() == null ? "" : scraped.getClazz();
+        Integer volume = scraped.getVolume() == null ? 0 : scraped.getVolume();
+
+        Liquor liquor = liquorRepository
+                .findByNormalizedNameAndClazzAndVolume(normalizedName, clazz, volume)
+                .orElseGet(Liquor::new);
+
+        liquor.setNormalizedName(normalizedName);
+        liquor.setName(scraped.getName());
+        liquor.setBrand(scraped.getBrand());
+        liquor.setCategory(scraped.getCategory());
+        liquor.setCountry(scraped.getCountry());
+        liquor.setAlcoholPercent(scraped.getAlcoholPercent());
+        liquor.setVolume(volume);
+        liquor.setClazz(clazz);
+        liquor.setProductCode(scraped.getProductCode());
+        liquor.setProductName(scraped.getFullname() == null ? scraped.getName() : scraped.getFullname());
+        liquor.setProductUrl(scraped.getProductUrl());
+        liquor.setImageUrl(scraped.getImageUrl());
+
+        return liquorRepository.save(liquor);
+    }
+
+    private LiquorPrice upsertLiquorPrice(Liquor liquor, Liquor scraped) {
+        LiquorPrice price = liquorPriceRepository
+                .findByLiquorIdAndSource(liquor.getId(), NORMALIZED_SOURCE)
+                .orElseGet(() -> LiquorPrice.builder()
+                        .liquor(liquor)
+                        .source(NORMALIZED_SOURCE)
+                        .build());
+
+        price.setLiquor(liquor);
+        price.setSource(NORMALIZED_SOURCE);
+        price.setCurrentPrice(scraped.getCurrentPrice());
+        price.setOriginalPrice(scraped.getOriginalPrice());
+        return liquorPriceRepository.save(price);
     }
 }

@@ -1,10 +1,8 @@
 package org.bito.liquor.service;
 
 import lombok.RequiredArgsConstructor;
-import org.bito.liquor.common.model.Liquor;
-import org.bito.liquor.common.model.PriceHistory;
-import org.bito.liquor.common.repository.LiquorRepository;
-import org.bito.liquor.common.repository.PriceHistoryRepository;
+import org.bito.liquor.common.model.LiquorPrice;
+import org.bito.liquor.common.repository.LiquorPriceRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -15,43 +13,42 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class LiquorQueryService {
 
-    private final LiquorRepository liquorRepository;
-    private final PriceHistoryRepository priceHistoryRepository;
+    private final LiquorPriceRepository liquorPriceRepository;
 
-    public List<Liquor> getAllLiquors() {
-        return liquorRepository.findAllByOrderByUpdatedAtDesc();
+    public List<LiquorPrice> getAllLiquors() {
+        return liquorPriceRepository.findAllOrderByUpdatedAtDesc();
     }
 
-    public Optional<Liquor> getLiquorById(Long id) {
-        return liquorRepository.findById(id);
+    public Optional<LiquorPrice> getLiquorById(Long id) {
+        return liquorPriceRepository.findById(id);
     }
 
-    public List<Liquor> searchLiquors(String keyword) {
-        return liquorRepository.findByNameContainingIgnoreCase(keyword);
+    public List<LiquorPrice> searchLiquors(String keyword) {
+        return liquorPriceRepository.searchByKeyword(keyword);
     }
 
-    public List<Liquor> getLiquorsByBrand(String brand) {
-        return liquorRepository.findByBrand(brand);
+    public List<LiquorPrice> getLiquorsByBrand(String brand) {
+        return liquorPriceRepository.findByBrand(brand);
     }
 
-    public List<Liquor> getLiquorsByCategory(String category) {
-        return liquorRepository.findByCategory(category);
+    public List<LiquorPrice> getLiquorsByCategory(String category) {
+        return liquorPriceRepository.findByCategory(category);
     }
 
-    public List<Liquor> getCheapLiquors(Integer maxPrice) {
-        return liquorRepository.findByCurrentPriceLessThanOrderByCurrentPriceAsc(maxPrice);
+    public List<LiquorPrice> getCheapLiquors(Integer maxPrice) {
+        return liquorPriceRepository.findCheapLiquors(maxPrice);
     }
 
-    public List<Liquor> getLowestPriceWhiskies() {
-        return liquorRepository.findLowestPriceWhiskies();
+    public List<LiquorPrice> getLowestPriceWhiskies() {
+        return liquorPriceRepository.findLowestPriceWhiskies();
     }
 
-    public List<PriceHistory> getPriceHistory(Long liquorId) {
-        return priceHistoryRepository.findByLiquorIdOrderByRecordedAtDesc(liquorId);
+    public List<LiquorPrice> getPriceHistory(Long liquorId) {
+        return liquorPriceRepository.findByLiquorIdOrderByCrawledAtDesc(liquorId);
     }
 
-    public List<PriceHistory> getPriceHistoryBetween(Long liquorId, LocalDateTime start, LocalDateTime end) {
-        return priceHistoryRepository.findByLiquorIdAndRecordedAtBetweenOrderByRecordedAtAsc(
+    public List<LiquorPrice> getPriceHistoryBetween(Long liquorId, LocalDateTime start, LocalDateTime end) {
+        return liquorPriceRepository.findByLiquorIdAndCrawledAtBetweenOrderByCrawledAtAsc(
                 liquorId, start, end);
     }
 }
