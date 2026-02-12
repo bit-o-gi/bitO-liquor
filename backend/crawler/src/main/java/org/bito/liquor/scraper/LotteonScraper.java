@@ -147,7 +147,7 @@ public class LotteonScraper {
                 String itemId = item.optString("item_id", "");
 
                 Liquor liquor = Liquor.builder()
-                        .productCode(itemId.isEmpty() ? "LOTTEON_" + System.currentTimeMillis() : "LOTTEON_" + itemId)
+                        .productCode(itemId.isEmpty() ? createFallbackProductCode(itemName) : "LOTTEON_" + itemId)
                         .name(itemName)
                         .currentPrice(price)
                         .originalPrice(discount > 0 ? price + discount : price)
@@ -193,10 +193,12 @@ public class LotteonScraper {
 
     private Liquor extractFromElement(WebElement element) {
         Liquor.LiquorBuilder builder = Liquor.builder().source(SOURCE);
+        String name;
 
         try {
             WebElement nameEl = element.findElement(By.cssSelector("[class*='name'], [class*='title'], .prd-name"));
-            builder.name(nameEl.getText().trim());
+            name = nameEl.getText().trim();
+            builder.name(name);
         } catch (Exception e) {
             return null;
         }
@@ -228,15 +230,23 @@ public class LotteonScraper {
             if (matcher.find()) {
                 builder.productCode("LOTTEON_" + matcher.group(1));
             } else {
-                builder.productCode("LOTTEON_" + System.currentTimeMillis());
+                builder.productCode(createFallbackProductCode(name));
             }
         } catch (Exception e) {
-            builder.productCode("LOTTEON_" + System.currentTimeMillis());
+            builder.productCode(createFallbackProductCode(name));
         }
 
         Liquor liquor = builder.build();
         extractDetailsFromName(liquor);
         return liquor;
+    }
+
+    private String createFallbackProductCode(String name) {
+        String normalized = normalizeForMatch(name);
+        if (normalized.isBlank()) {
+            normalized = "unknown";
+        }
+        return "LOTTEON_NAME_" + Integer.toUnsignedLong(normalized.hashCode());
     }
 
     private boolean isAcceptableMatch(String keyword, Liquor liquor) {

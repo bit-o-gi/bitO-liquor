@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -52,7 +53,8 @@ public class LotteonCrawlService {
 
     private void normalizeLiquor(Liquor liquor, String source) {
         liquor.setSource(source);
-        liquor.setNormalizedName(liquor.getName() == null ? null : liquor.getName().trim().toLowerCase());
+        liquor.setNormalizedName(buildNormalizedName(liquor));
+        liquor.setClazz(normalizeClazz(liquor.getClazz()));
         if (liquor.getCurrentPrice() != null && liquor.getCurrentPrice() <= 0) {
             liquor.setCurrentPrice(null);
         }
@@ -72,13 +74,20 @@ public class LotteonCrawlService {
     }
 
     private Liquor upsertLiquor(Liquor scraped) {
+        String productCode = normalizeText(scraped.getProductCode());
         String normalizedName = scraped.getNormalizedName();
-        String clazz = scraped.getClazz() == null ? "" : scraped.getClazz();
+        String clazz = normalizeClazz(scraped.getClazz());
         Integer volume = scraped.getVolume() == null ? 0 : scraped.getVolume();
 
-        Liquor liquor = liquorRepository
-                .findByNormalizedNameAndClazzAndVolume(normalizedName, clazz, volume)
-                .orElseGet(Liquor::new);
+        Liquor liquor = null;
+        if (!productCode.isBlank()) {
+            liquor = liquorRepository.findByProductCode(productCode).orElse(null);
+        }
+        if (liquor == null) {
+            liquor = liquorRepository
+                    .findByNormalizedNameAndClazzAndVolume(normalizedName, clazz, volume)
+                    .orElseGet(Liquor::new);
+        }
 
         liquor.setNormalizedName(normalizedName);
         liquor.setName(scraped.getName());
@@ -109,5 +118,29 @@ public class LotteonCrawlService {
         price.setCurrentPrice(scraped.getCurrentPrice());
         price.setOriginalPrice(scraped.getOriginalPrice());
         return liquorPriceRepository.save(price);
+    }
+
+    private String buildNormalizedName(Liquor liquor) {
+        String base = normalizeText(liquor.getFullname());
+        if (base.isBlank()) {
+            base = normalizeText(liquor.getName());
+        }
+        return base.toLowerCase(Locale.ROOT)
+                .replaceAll("\\[.*?\\]", " ")
+                .replaceAll("\\d+\\s*(ml|mL|ML|l|L|리터)", " ")
+                .replaceAll("[^0-9a-z가-힣]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String normalizeClazz(String clazz) {
+        return normalizeText(clazz)
+                .replace("()", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim();
     }
 }
