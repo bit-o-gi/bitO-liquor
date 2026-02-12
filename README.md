@@ -98,8 +98,6 @@ curl -X POST http://localhost:8081/api/crawl/emart
 ## 데이터 모델 메모
 
 - 현재 핵심 상품 테이블은 `public.liquors`입니다.
-- `public.whisky` 테이블은 제거되었습니다.
-- `/api/whisky/lowest`는 호환성 유지를 위해 `liquors` 기반 조회를 사용합니다.
 
 ## 주의사항
 

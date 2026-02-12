@@ -18,8 +18,6 @@
 
 데이터/도메인 참고:
 - 핵심 상품 테이블은 `public.liquors`입니다.
-- `public.whisky` 테이블은 제거되었습니다.
-- `/api/whisky/lowest` 엔드포인트는 `liquors` 기반 호환 API입니다.
 
 ## 빌드, 테스트, 개발 명령어
 백엔드 (`backend/`에서 실행):
