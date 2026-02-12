@@ -5,7 +5,7 @@
 ## 프로젝트 구성
 
 - `backend/`: Java 21 + Spring Boot 멀티모듈
-- `frontend/`: React 19 + TypeScript + Vite (현재 mock 데이터 기반 UI)
+- `frontend/`: React 19 + TypeScript + Vite (백엔드 API 연동 UI)
 
 백엔드 모듈:
 - `backend/common`: 공통 엔티티, DTO, Repository
@@ -37,6 +37,12 @@ cd backend
 cd frontend
 npm install
 npm run dev
+```
+
+기본 API 주소는 `http://localhost:8080`이며, 필요하면 `frontend/.env`에 아래를 설정해 변경할 수 있습니다.
+
+```bash
+VITE_API_BASE_URL=http://localhost:8080
 ```
 
 ## 환경 설정
