@@ -62,6 +62,8 @@ out/
 .env
 .mcp.json
 application-local.properties
+backend/api/src/main/resources/application-local.properties
+backend/crawler/src/main/resources/application-local.properties
 
 ### Vercel ###
 .vercel
