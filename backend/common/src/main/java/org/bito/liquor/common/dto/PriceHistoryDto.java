@@ -2,7 +2,7 @@ package org.bito.liquor.common.dto;
 
 import lombok.Builder;
 import lombok.Data;
-import org.bito.liquor.common.model.PriceHistory;
+import org.bito.liquor.common.model.LiquorPrice;
 
 import java.time.LocalDateTime;
 
@@ -14,11 +14,11 @@ public class PriceHistoryDto {
     private Integer price;
     private LocalDateTime recordedAt;
 
-    public static PriceHistoryDto from(PriceHistory history) {
+    public static PriceHistoryDto from(LiquorPrice history) {
         return PriceHistoryDto.builder()
                 .id(history.getId())
-                .price(history.getPrice())
-                .recordedAt(history.getRecordedAt())
+                .price(history.getCurrentPrice())
+                .recordedAt(history.getCrawledAt())
                 .build();
     }
 }

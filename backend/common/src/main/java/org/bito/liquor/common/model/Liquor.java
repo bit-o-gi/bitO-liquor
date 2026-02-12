@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "liquors")
+@Table(name = "liquor")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,40 +18,64 @@ public class Liquor {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true)
-    private String productCode;
+    @Column(name = "normalized_name", nullable = false)
+    private String normalizedName;
 
+    @Transient
     private String name;
 
     private String brand;
 
     private String category;
 
+    @Column(name = "volume_ml")
     private Integer volume;
 
     private Double alcoholPercent;
 
     private String country;
 
-    private Integer currentPrice;
+    @Column(name = "class")
+    private String clazz;
 
-    private Integer originalPrice;
+    @Column(name = "product_code")
+    private String productCode;
 
-    @Column(length = 1000)
-    private String imageUrl;
+    @Column(name = "product_name")
+    private String productName;
 
-    @Column(length = 1000)
+    @Column(name = "product_url", length = 1000)
     private String productUrl;
 
-    private String source;
+    @Column(name = "image_url", length = 1000)
+    private String imageUrl;
 
-    @Column(updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Transient
+    private Integer currentPrice;
+
+    @Transient
+    private Integer originalPrice;
+
+    @Transient
+    private String source;
+
+    @Transient
+    private String fullname;
 
     @PrePersist
     protected void onCreate() {
+        if (normalizedName == null) {
+            String baseName = name != null ? name : productName;
+            if (baseName != null) {
+                normalizedName = baseName.trim().toLowerCase();
+            }
+        }
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }
@@ -66,5 +90,9 @@ public class Liquor {
             return (int) ((1 - (double) currentPrice / originalPrice) * 100);
         }
         return 0;
+    }
+
+    public String getName() {
+        return name != null ? name : productName;
     }
 }
