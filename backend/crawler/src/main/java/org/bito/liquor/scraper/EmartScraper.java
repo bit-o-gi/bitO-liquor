@@ -9,8 +9,6 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.stereotype.Component;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -20,88 +18,82 @@ import java.util.regex.Pattern;
 @Component
 public class EmartScraper {
 
-    private static final String SEARCH_URL_TEMPLATE = "https://emart.ssg.com/search.ssg?query=%s";
+    private static final String BASE_SEARCH_URL = "https://emart.ssg.com/search.ssg?query=%EC%A3%BC%EB%A5%98&ctgLv=2&ctgId=6000213466";
     private static final String SOURCE = "EMART";
-    private static final int MIN_MATCH_SCORE = 30;
-    private static final int MAX_CANDIDATES_PER_KEYWORD = 40;
-    private static final Pattern ITEM_ID_PATTERN = Pattern.compile("itemId=([A-Za-z0-9]+)");
-
-    private static final List<String> TARGET_KEYWORDS = Arrays.asList(
-            "산토리 가쿠빈",
-            "그란츠 트리플 우드",
-            "맥캘란 12 더블 캐스크",
-            "발베니 12 더블우드",
-            "시바스 리갈 12년",
-            "조니워커 블랙 라벨",
-            "글렌드로낙 12년",
-            "벨즈",
-            "와일드 터키 101",
-            "짐 빔 화이트 라벨",
-            "제임슨",
-            "조니워커 블론드",
-            "맥캘란 15년",
-            "조니워커 골드 라벨",
-            "아드벡 10년",
-            "글렌피딕 12년",
-            "글렌리벳 12년",
-            "버팔로 트레이스",
-            "라가불린 16년",
-            "로얄 살루트 21년"
-    );
+    private static final int MAX_PAGE = 50;
 
     private static final List<String> KNOWN_BRANDS = Arrays.asList(
+            // 위스키
             "조니워커", "발렌타인", "글렌피딕", "맥캘란", "짐빔", "산토리", "잭다니엘",
             "와일드터키", "버팔로트레이스", "메이커스마크", "로얄살루트", "시바스리갈",
             "글렌리벳", "발베니", "아드벡", "라프로익", "탈리스커", "싱글톤", "에반윌리엄스",
             "제임슨", "카나디안클럽", "벨즈", "블랙앤화이트", "커티삭", "몽키숄더", "니카",
             "하이랜드파크", "보모어", "라가불린", "오반", "글렌모렌지", "달모어", "히비키", "야마자키",
-            "카발란", "글렌그란트", "더글렌그란트", "그란츠", "글렌드로낙",
-            "조니 워커", "짐 빔", "와일드 터키", "시바스 리갈", "로얄 살루트", "버팔로 트레이스"
-    );
-
-    private static final List<String> LIQUOR_HINTS = Arrays.asList(
-            "위스키", "whisky", "whiskey", "스카치", "버번", "싱글몰트", "블렌디드",
-            "브랜디", "보드카", "럼", "진", "데킬라", "리큐르", "리큐어"
-    );
-
-    private static final List<String> ACCESSORY_HINTS = Arrays.asList(
-            "잔", "글라스", "머그", "컵", "스푼", "도감", "키트", "앨범", "쿠션",
-            "원피스", "팬츠", "치마", "티셔츠", "니트", "식기", "물병", "디켄터",
-            "텀블러", "하이볼잔", "맥주잔", "유리잔", "노징"
+            "카발란", "글렌그란트", "더글렌그란트", "커티삭",
+            // 와인
+            "1865", "몬테스", "G7", "디아블로", "칸티", "빌라엠", "모엣샹동", "돔페리뇽",
+            "뵈브클리코", "투핸즈", "이스까이", "텍스트북", "덕혼", "클라우디베이", "펜폴즈",
+            "샤토", "샤또", "울프블라스", "옐로우테일", "코노수르", "앙시앙땅", "트라피체",
+            "에라스리즈", "산타리타", "로버트몬다비", "프레스코발디", "피치니", "우마니론끼",
+            "몰리두커", "머드하우스", "배비치", "롱반", "서브미션", "브레드앤버터",
+            // 사케/기타
+            "간바레오또상", "마루", "준마이", "센카", "라쿠엔", "쿠보타", "닷사이", "월계관",
+            // 리큐르/보드카/진/럼
+            "앱솔루트", "스미노프", "그레이구스", "봄베이", "핸드릭스", "바카디", "말리부",
+            "깔루아", "베일리스", "엑스레이티드", "예거마이스터", "아그와", "호세쿠엘보", "팔리니",
+            "코인트로", "볼스"
     );
 
     public List<Liquor> scrapeLiquors() {
         List<Liquor> liquors = new ArrayList<>();
-        Set<String> usedProductCodes = new HashSet<>();
         WebDriver driver = null;
 
         try {
             driver = createWebDriver();
+            int page = 1;
 
-            for (String keyword : TARGET_KEYWORDS) {
-                try {
-                    List<WebElement> items = searchItems(driver, keyword);
-                    if (items.isEmpty()) {
-                        items = searchItems(driver, keyword + " 위스키");
-                    }
+            while (page <= MAX_PAGE) {
+                String currentPageUrl = BASE_SEARCH_URL + "&page=" + page;
+                log.info("크롤링 중... Page: {} | URL: {}", page, currentPageUrl);
 
-                    Liquor liquor = selectBestMatchedItem(keyword, items, usedProductCodes);
-                    if (liquor != null) {
-                        liquors.add(liquor);
-                        usedProductCodes.add(liquor.getProductCode());
-                        log.info("'{}' → 상품 수집 성공: {} - {}원", keyword, liquor.getName(), liquor.getCurrentPrice());
-                    } else {
-                        log.warn("'{}' → 키워드 매칭 상품을 찾지 못함", keyword);
-                    }
+                driver.get(currentPageUrl);
 
-                    Thread.sleep((long) (Math.random() * 1500) + 1500);
+                // 봇 탐지 회피를 위한 랜덤 대기
+                Thread.sleep((long) (Math.random() * 1500) + 1000);
 
-                } catch (Exception e) {
-                    log.error("'{}' 검색 중 오류: {}", keyword, e.getMessage());
+                JavascriptExecutor js = (JavascriptExecutor) driver;
+                for (int i = 0; i < 2; i++) {
+                    js.executeScript("window.scrollBy(0, 1000)");
+                    Thread.sleep(500);
                 }
-            }
 
-            log.info("=== 이마트 크롤링 완료: 총 {}개 상품 수집 ===", liquors.size());
+                List<WebElement> items = Collections.emptyList();
+                try {
+                    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
+                    wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("div.css-sz3opf")));
+                    items = driver.findElements(By.cssSelector("div.css-sz3opf"));
+                } catch (TimeoutException e) {
+                    log.info("페이지 {}에서 상품을 찾을 수 없습니다. (크롤링 종료)", page);
+                    break;
+                }
+
+                if (items.isEmpty()) break;
+
+                log.info("Page {}: 발견된 아이템 {}개", page, items.size());
+
+                for (WebElement item : items) {
+                    try {
+                        Liquor liquor = extractItem(item);
+                        if (liquor != null) {
+                            liquors.add(liquor);
+                        }
+                    } catch (Exception e) {
+                        // 개별 아이템 에러 무시
+                    }
+                }
+                page++;
+            }
+            log.info("=== 전체 크롤링 완료: 총 {}개 상품 수집 ===", liquors.size());
 
         } catch (Exception e) {
             log.error("크롤링 중 치명적 오류 발생: {}", e.getMessage(), e);
@@ -113,204 +105,17 @@ public class EmartScraper {
         return liquors;
     }
 
-    private List<WebElement> searchItems(WebDriver driver, String query) throws InterruptedException {
-        String encodedKeyword = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        String searchUrl = String.format(SEARCH_URL_TEMPLATE, encodedKeyword);
-        log.info("키워드 검색 중: '{}' | URL: {}", query, searchUrl);
-
-        driver.get(searchUrl);
-        Thread.sleep((long) (Math.random() * 1500) + 1000);
-
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        for (int i = 0; i < 2; i++) {
-            js.executeScript("window.scrollBy(0, 1000)");
-            Thread.sleep(500);
-        }
-
-        try {
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
-            wait.until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector("div.css-sz3opf, a[href*='itemId='], li[data-index]")));
-            return findProductItems(driver);
-        } catch (TimeoutException e) {
-            return Collections.emptyList();
-        }
-    }
-
-    private List<WebElement> findProductItems(WebDriver driver) {
-        List<WebElement> items = new ArrayList<>();
-        String[] selectors = {
-                "div.css-sz3opf",
-                "li[data-index]",
-                "li[class*='product']",
-                "div[class*='product']"
-        };
-
-        for (String selector : selectors) {
-            List<WebElement> found = driver.findElements(By.cssSelector(selector));
-            if (!found.isEmpty()) {
-                items.addAll(found);
-            }
-        }
-        if (!items.isEmpty()) {
-            return items;
-        }
-
-        Set<String> seen = new HashSet<>();
-        List<WebElement> anchors = driver.findElements(By.cssSelector("a[href*='itemId=']"));
-        for (WebElement anchor : anchors) {
-            WebElement container = findClosestContainer(anchor);
-            if (container == null) {
-                continue;
-            }
-            String key = container.getAttribute("outerHTML");
-            if (key != null && seen.add(key)) {
-                items.add(container);
-            }
-        }
-        return items;
-    }
-
-    private Liquor selectBestMatchedItem(String keyword, List<WebElement> items, Set<String> usedProductCodes) {
-        if (items == null || items.isEmpty()) {
-            return null;
-        }
-
-        Liquor best = null;
-        int bestScore = Integer.MIN_VALUE;
-
-        int limit = Math.min(items.size(), MAX_CANDIDATES_PER_KEYWORD);
-        for (int i = 0; i < limit; i++) {
-            Liquor candidate = extractItem(items.get(i));
-            if (candidate == null || candidate.getName() == null || candidate.getProductCode() == null) {
-                continue;
-            }
-            if (!isLikelyLiquor(candidate.getName())) {
-                continue;
-            }
-            if (usedProductCodes.contains(candidate.getProductCode())) {
-                continue;
-            }
-
-            int score = calculateMatchScore(keyword, candidate.getName());
-            if (score > bestScore) {
-                bestScore = score;
-                best = candidate;
-            }
-        }
-
-        if (best != null && bestScore >= MIN_MATCH_SCORE) {
-            return best;
-        }
-        return null;
-    }
-
-    private int calculateMatchScore(String keyword, String productName) {
-        String normalizedKeyword = normalizeForMatch(keyword);
-        String normalizedProductName = normalizeForMatch(productName);
-        int score = 0;
-
-        if (normalizedProductName.contains(normalizedKeyword)) {
-            score += 100;
-        }
-
-        for (String token : keyword.split("\\s+")) {
-            String normalizedToken = normalizeForMatch(token);
-            if (normalizedToken.length() < 2) {
-                continue;
-            }
-            if (normalizedProductName.contains(normalizedToken)) {
-                score += 18;
-            } else {
-                score -= 8;
-            }
-        }
-
-        if (isLikelyLiquor(productName)) {
-            score += 20;
-        } else {
-            score -= 35;
-        }
-        if (containsAccessoryHint(productName)) {
-            score -= 120;
-        }
-
-        return score;
-    }
-
-    private boolean isLikelyLiquor(String productName) {
-        if (productName == null) {
-            return false;
-        }
-        if (containsAccessoryHint(productName)) {
-            return false;
-        }
-
-        String lower = productName.toLowerCase();
-
-        for (String hint : LIQUOR_HINTS) {
-            if (lower.contains(hint.toLowerCase())) {
-                return true;
-            }
-        }
-        for (String brand : KNOWN_BRANDS) {
-            if (productName.contains(brand) && hasVolumeHint(productName)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean containsAccessoryHint(String productName) {
-        String lower = productName == null ? "" : productName.toLowerCase();
-        for (String hint : ACCESSORY_HINTS) {
-            if (lower.contains(hint.toLowerCase())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean hasVolumeHint(String productName) {
-        return Pattern.compile("(\\d+)\\s*(ml|ML|mL|l|L|리터)").matcher(productName).find();
-    }
-
-    private String normalizeForMatch(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.toLowerCase()
-                .replace(" ", "")
-                .replace("더블우드", "더블 우드")
-                .replace("더블캐스크", "더블 캐스크")
-                .replace("트리플우드", "트리플 우드")
-                .replace("블랙라벨", "블랙 라벨")
-                .replace("골드라벨", "골드 라벨")
-                .replace("화이트라벨", "화이트 라벨")
-                .replace("버팔로트레이스", "버팔로 트레이스")
-                .replace("와일드터키", "와일드 터키")
-                .replace("조니워커", "조니 워커")
-                .replace("시바스리갈", "시바스 리갈")
-                .replace("로얄살루트", "로얄 살루트")
-                .replace("짐빔", "짐 빔")
-                .replace("맥켈란", "맥캘란")
-                .replaceAll("[^0-9a-z가-힣]", "")
-                .replace(" ", "");
-    }
-
     private Liquor extractItem(WebElement el) {
         try {
-            String name = firstText(el,
-                    ".css-1mrk1dy",
-                    "[class*='title']",
-                    "[class*='name']",
-                    "strong",
-                    "em");
-
-            if (name == null || name.isBlank()) {
+            // 1. 이름 추출
+            String name = "";
+            try {
+                name = el.findElement(By.cssSelector(".css-1mrk1dy")).getText().trim();
+            } catch (Exception e) {
                 return null;
             }
 
+            // 카테고리 감지
             String category = detectCategory(name);
 
             Liquor.LiquorBuilder builder = Liquor.builder()
@@ -318,39 +123,41 @@ public class EmartScraper {
                     .source(SOURCE)
                     .category(category);
 
-            Integer price = parseFirstPrice(el);
-            if (price != null && price > 0) {
+            // 2. 가격 추출
+            try {
+                String priceTxt = el.findElement(By.cssSelector(".css-1oiygnj")).getText();
+                int price = Integer.parseInt(priceTxt.replaceAll("[^0-9]", ""));
                 builder.currentPrice(price);
                 builder.originalPrice(price);
-            } else {
+            } catch (Exception e) {
                 builder.currentPrice(0);
             }
 
-            String href = firstAttr(el, "href",
-                    "a.css-1umjy1n",
-                    "a[href*='itemId=']",
-                    "a[href*='/item/itemView.ssg']");
+            // 3. 링크 및 코드 추출
+            try {
+                String href = el.findElement(By.cssSelector("a.css-1umjy1n")).getAttribute("href");
+                builder.productUrl(href);
 
-            if (href == null || href.isBlank()) {
+                String itemId = "";
+                if (href.contains("itemId=")) {
+                    itemId = href.split("itemId=")[1].split("&")[0];
+                } else {
+                    itemId = "EMART_" + Math.abs(name.hashCode());
+                }
+                builder.productCode(itemId);
+            } catch (Exception e) {
                 return null;
             }
 
-                builder.productUrl(href);
-            String itemId = extractItemId(href);
-            if (itemId == null || itemId.isBlank()) {
-                itemId = String.valueOf(Integer.toUnsignedLong(normalizeForMatch(name).hashCode()));
-            }
-            builder.productCode("EMART_" + itemId);
-
-            String img = firstAttr(el, "src", "img");
-            if (img == null || img.isBlank()) {
-                img = firstAttr(el, "data-src", "img");
-            }
-            if (img != null && !img.isBlank()) {
+            // 4. 이미지 추출
+            try {
+                String img = el.findElement(By.tagName("img")).getAttribute("src");
                 builder.imageUrl(img);
-            }
+            } catch (Exception ignored) {}
 
             Liquor liquor = builder.build();
+
+            // 5. 상세 정보 추출 (브랜드, 도수, 용량) - 여기가 핵심 수정 부분
             enrichLiquorInfo(liquor);
 
             return liquor;
@@ -358,88 +165,6 @@ public class EmartScraper {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private Integer parseFirstPrice(WebElement el) {
-        String[] selectors = {
-                ".css-1oiygnj",
-                "[class*='price']",
-                "[class*='sale']",
-                "em",
-                "strong"
-        };
-
-        for (String selector : selectors) {
-            List<WebElement> elements = el.findElements(By.cssSelector(selector));
-            for (WebElement element : elements) {
-                String text = element.getText();
-                if (text == null || text.isBlank()) {
-                    continue;
-                }
-                String digits = text.replaceAll("[^0-9]", "");
-                if (digits.isEmpty()) {
-                    continue;
-                }
-                try {
-                    int value = Integer.parseInt(digits);
-                    if (value > 0) {
-                        return value;
-                    }
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
-        return null;
-    }
-
-    private String firstText(WebElement el, String... selectors) {
-        for (String selector : selectors) {
-            List<WebElement> found = el.findElements(By.cssSelector(selector));
-            for (WebElement item : found) {
-                String text = item.getText();
-                if (text != null && !text.isBlank()) {
-                    return text.trim();
-                }
-            }
-        }
-        return null;
-    }
-
-    private String firstAttr(WebElement el, String attr, String... selectors) {
-        for (String selector : selectors) {
-            List<WebElement> found = el.findElements(By.cssSelector(selector));
-            for (WebElement item : found) {
-                String value = item.getAttribute(attr);
-                if (value != null && !value.isBlank()) {
-                    return value.trim();
-                }
-            }
-        }
-        return null;
-    }
-
-    private WebElement findClosestContainer(WebElement anchor) {
-        String[] xpaths = {
-                "./ancestor::li[1]",
-                "./ancestor::article[1]",
-                "./ancestor::div[1]"
-        };
-
-        for (String xpath : xpaths) {
-            try {
-                return anchor.findElement(By.xpath(xpath));
-            } catch (Exception ignored) {
-            }
-        }
-        return null;
-    }
-
-    private String extractItemId(String href) {
-        Matcher matcher = ITEM_ID_PATTERN.matcher(href);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return null;
     }
 
     private String detectCategory(String name) {
@@ -468,17 +193,15 @@ public class EmartScraper {
     private void enrichLiquorInfo(Liquor liquor) {
         String name = liquor.getName();
 
-        // fullname = 원본 상품명 그대로
-        liquor.setFullname(name);
-
-        String foundBrand = null;
+        // 1. 브랜드 추출
+        String foundBrand = "기타";
         for (String brand : KNOWN_BRANDS) {
             if (name.contains(brand)) {
                 foundBrand = brand;
                 break;
             }
         }
-        if (foundBrand == null) {
+        if (foundBrand.equals("기타")) {
             String cleanName = name.replaceAll("\\[.*?\\]", "").trim();
             if (!cleanName.isEmpty()) {
                 String[] parts = cleanName.split(" ");
@@ -489,14 +212,17 @@ public class EmartScraper {
         }
         liquor.setBrand(foundBrand);
 
+        // 2. 도수 추출 (우선순위: 이름 내 명시된 도수 -> 카테고리별 표준 도수)
         double alcohol = 0.0;
 
+        // 정규식으로 이름에서 도수 찾기 (예: "13.5%", "17도")
         Pattern abvPattern = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*(%|도)");
         Matcher abvMatcher = abvPattern.matcher(name);
 
         if (abvMatcher.find()) {
             alcohol = Double.parseDouble(abvMatcher.group(1));
         } else {
+            // 이름에 도수가 없으면 카테고리별 기본값 할당
             switch (liquor.getCategory()) {
                 case "Whisky":
                 case "Rum":
@@ -511,7 +237,7 @@ public class EmartScraper {
                 case "Rose Wine":
                 case "Wine":
                 case "Wine Set":
-                    alcohol = 13.5;
+                    alcohol = 13.5; // 와인 평균
                     break;
                 case "Sparkling Wine":
                 case "Champagne":
@@ -529,6 +255,7 @@ public class EmartScraper {
         }
         liquor.setAlcoholPercent(alcohol);
 
+        // 3. 용량 추출 (우선순위: 이름 내 명시된 용량 -> 카테고리별 표준 용량)
         int volume = 0;
 
         if (name.toUpperCase().contains("1L") || name.contains("1리터")) {
@@ -539,33 +266,24 @@ public class EmartScraper {
             if (volMatcher.find()) {
                 volume = Integer.parseInt(volMatcher.group(1));
             } else {
+                // 이름에 용량이 없으면 카테고리별 기본값 할당
                 if (liquor.getCategory().contains("Wine") || liquor.getCategory().equals("Champagne")) {
-                    volume = 750;
+                    volume = 750; // 와인 표준
                 } else if (liquor.getCategory().equals("Sake")) {
-                    volume = 720;
+                    volume = 720; // 사케 표준
                 } else if (liquor.getCategory().equals("Whisky") || liquor.getCategory().equals("Vodka")) {
-                    volume = 700;
+                    volume = 700; // 위스키 표준
                 } else {
-                    volume = 750;
+                    volume = 750; // 기타
                 }
             }
         }
         liquor.setVolume(volume);
-
-        // clazz = 브랜드 + 용량 정보 제거한 나머지
-        String clazz = name;
-        if (liquor.getBrand() != null) {
-            clazz = clazz.replace(liquor.getBrand(), "").trim();
-        }
-        clazz = clazz.replaceAll("\\[.*?\\]", "").trim();
-        clazz = clazz.replaceAll("\\d+\\s*(ml|ML|mL|L|l|리터)", "").trim();
-        clazz = clazz.replaceAll("\\s+", " ").trim();
-        liquor.setClazz(clazz);
     }
 
     private WebDriver createWebDriver() {
         ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless=true");
+        options.addArguments("--headless=true"); // 필요시 true/false 변경
         options.addArguments("--disable-blink-features=AutomationControlled");
         options.setExperimentalOption("excludeSwitches", Collections.singletonList("enable-automation"));
         options.setExperimentalOption("useAutomationExtension", false);
@@ -582,5 +300,4 @@ public class EmartScraper {
 
         return driver;
     }
-
 }
