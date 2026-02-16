@@ -32,20 +32,23 @@ interface RecommendationApiResponse {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
 function toFrontendLiquor(item: LiquorApiResponse): Liquor {
+  const currentPrice = typeof item.currentPrice === "number" ? item.currentPrice : 0;
+  const originalPrice = typeof item.originalPrice === "number" ? item.originalPrice : currentPrice;
+
   return {
-    id: item.id,
-    product_code: item.productCode,
-    name: item.name,
-    brand: item.brand,
-    category: item.category,
-    volume: item.volume,
-    alcohol_percent: item.alcoholPercent,
-    country: item.country,
-    current_price: item.currentPrice,
-    original_price: item.originalPrice,
-    image_url: item.imageUrl,
-    product_url: item.productUrl,
-    source: item.source,
+    id: typeof item.id === "number" ? item.id : 0,
+    product_code: item.productCode ?? "",
+    name: item.name ?? "Unknown",
+    brand: item.brand ?? "Unknown",
+    category: item.category ?? "Whisky",
+    volume: typeof item.volume === "number" ? item.volume : 700,
+    alcohol_percent: typeof item.alcoholPercent === "number" ? item.alcoholPercent : 0,
+    country: item.country ?? "Unknown",
+    current_price: currentPrice,
+    original_price: originalPrice,
+    image_url: item.imageUrl ?? "",
+    product_url: item.productUrl ?? "",
+    source: item.source ?? "WHISKY_DB",
   };
 }
 

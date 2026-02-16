@@ -111,7 +111,11 @@ export default function App() {
 
   function goHome() {
     setPage("catalog");
+    setSearchQuery("");
     setRecommendationResult(null);
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }
 
   return (
@@ -119,11 +123,11 @@ export default function App() {
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
-            <button
-              type="button"
-              onClick={goHome}
-              className="flex items-center gap-3"
-            >
+              <button
+                type="button"
+                onClick={goHome}
+                className="flex items-center gap-3 cursor-pointer"
+              >
               <span className="text-2xl">🥃</span>
               <h1 className="text-xl font-bold text-gray-900">Jururuk</h1>
             </button>
