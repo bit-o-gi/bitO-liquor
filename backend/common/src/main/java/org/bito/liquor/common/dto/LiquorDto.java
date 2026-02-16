@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 import org.bito.liquor.common.model.Liquor;
 import org.bito.liquor.common.model.LiquorPrice;
+import org.bito.liquor.common.model.Whisky;
 
 import java.time.LocalDateTime;
 
@@ -49,6 +50,51 @@ public class LiquorDto {
                 .fullname(liquor.getProductName())
                 .clazz(liquor.getClazz())
                 .updatedAt(price.getCrawledAt())
+                .build();
+    }
+
+    public static LiquorDto from(Whisky whisky) {
+        return from(whisky, null);
+    }
+
+    public static LiquorDto from(Whisky whisky, LiquorPrice matchedPrice) {
+        String productName = whisky.getProductName() == null || whisky.getProductName().isBlank()
+                ? whisky.getNormalizedName()
+                : whisky.getProductName();
+
+        Liquor matchedLiquor = matchedPrice == null ? null : matchedPrice.getLiquor();
+
+        String brand = whisky.getBrand() != null && !whisky.getBrand().isBlank()
+                ? whisky.getBrand()
+                : (matchedLiquor == null ? "Unknown" : matchedLiquor.getBrand());
+
+        String category = whisky.getCategory() != null && !whisky.getCategory().isBlank()
+                ? whisky.getCategory()
+                : (matchedLiquor == null ? "Whisky" : matchedLiquor.getCategory());
+
+        Integer volume = matchedLiquor == null || matchedLiquor.getVolume() == null ? 700 : matchedLiquor.getVolume();
+        Double alcoholPercent = whisky.getAlcoholPercent() != null
+                ? whisky.getAlcoholPercent()
+                : (matchedLiquor == null ? null : matchedLiquor.getAlcoholPercent());
+
+        return LiquorDto.builder()
+                .id(whisky.getId())
+                .productCode(whisky.getProductCode() == null ? whisky.getSeedKey() : whisky.getProductCode())
+                .name(productName)
+                .brand(brand)
+                .category(category)
+                .volume(volume)
+                .alcoholPercent(alcoholPercent)
+                .country(matchedLiquor == null ? "Unknown" : matchedLiquor.getCountry())
+                .currentPrice(matchedPrice == null || matchedPrice.getCurrentPrice() == null ? 0 : matchedPrice.getCurrentPrice())
+                .originalPrice(matchedPrice == null || matchedPrice.getOriginalPrice() == null ? 0 : matchedPrice.getOriginalPrice())
+                .discountPercent(matchedPrice == null ? 0 : matchedPrice.getDiscountPercent())
+                .imageUrl(matchedLiquor == null || matchedLiquor.getImageUrl() == null ? "" : matchedLiquor.getImageUrl())
+                .productUrl(matchedLiquor == null || matchedLiquor.getProductUrl() == null ? "" : matchedLiquor.getProductUrl())
+                .source(matchedPrice == null || matchedPrice.getSource() == null ? "WHISKY_DB" : matchedPrice.getSource())
+                .fullname(productName)
+                .clazz(whisky.getClazz() == null && matchedLiquor != null ? matchedLiquor.getClazz() : whisky.getClazz())
+                .updatedAt(matchedPrice == null ? whisky.getUpdatedAt() : matchedPrice.getCrawledAt())
                 .build();
     }
 }
