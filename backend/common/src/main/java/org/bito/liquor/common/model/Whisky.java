@@ -40,6 +40,15 @@ public class Whisky {
     @Column(name = "alcohol_percent")
     private Double alcoholPercent;
 
+    @Column(name = "image_url", length = 1000)
+    private String imageUrl;
+
+    @Column(name = "image_source", length = 50)
+    private String imageSource;
+
+    @Column(name = "image_generated_at")
+    private LocalDateTime imageGeneratedAt;
+
     private Double sweet;
 
     private Double smoky;

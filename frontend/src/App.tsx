@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchLiquors } from "./api/liquorApi";
 import { fetchRecommendations } from "./api/preferenceApi";
 import PreferenceTest from "./components/PreferenceTest";
@@ -56,39 +56,107 @@ function buildFallbackResult(vector: FlavorVector, liquors: GroupedLiquor[]): Pr
 export default function App() {
   const [page, setPage] = useState<AppPage>("catalog");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [liquors, setLiquors] = useState<Liquor[]>([]);
+  const [liquorPage, setLiquorPage] = useState(0);
+  const [hasNextLiquorPage, setHasNextLiquorPage] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recommendationResult, setRecommendationResult] = useState<PreferenceResult | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setLiquorPage(0);
+      setHasNextLiquorPage(true);
+    }, 250);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(async () => {
+
+    async function load() {
       try {
-        setLoading(true);
+        if (liquorPage === 0) {
+          setLoading(true);
+        } else {
+          setLoadingMore(true);
+        }
         setError(null);
 
-        const data = await fetchLiquors(searchQuery, controller.signal);
+        const data = await fetchLiquors({
+          searchQuery: debouncedSearchQuery,
+          page: liquorPage,
+          size: 24,
+          signal: controller.signal,
+        });
+
         if (!controller.signal.aborted) {
-          setLiquors(data);
+          setLiquors((previous) => (liquorPage === 0 ? data.items : [...previous, ...data.items]));
+          setHasNextLiquorPage(data.hasNext);
         }
       } catch {
         if (!controller.signal.aborted) {
           setError("데이터를 불러오지 못했습니다. API 서버 상태를 확인해주세요.");
-          setLiquors([]);
+          if (liquorPage === 0) {
+            setLiquors([]);
+          }
         }
       } finally {
         if (!controller.signal.aborted) {
-          setLoading(false);
+          if (liquorPage === 0) {
+            setLoading(false);
+          }
+          setLoadingMore(false);
         }
       }
-    }, 250);
+    }
+
+    load();
 
     return () => {
       controller.abort();
-      clearTimeout(timeoutId);
     };
-  }, [searchQuery]);
+  }, [debouncedSearchQuery, liquorPage]);
+
+  const loadMoreLiquors = useCallback(() => {
+    if (page !== "catalog" || loading || loadingMore || !hasNextLiquorPage || error) {
+      return;
+    }
+
+    setLiquorPage((current) => current + 1);
+  }, [error, hasNextLiquorPage, loading, loadingMore, page]);
+
+  useEffect(() => {
+    if (page !== "catalog") {
+      return;
+    }
+
+    const target = loadMoreRef.current;
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          loadMoreLiquors();
+        }
+      },
+      { rootMargin: "200px 0px" }
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [loadMoreLiquors, page]);
 
   const groupedLiquors: GroupedLiquor[] = useMemo(() => groupLiquors(liquors), [liquors]);
 
@@ -200,7 +268,10 @@ export default function App() {
               searchQuery={searchQuery}
               liquors={groupedLiquors}
               loading={loading}
+              loadingMore={loadingMore}
+              hasNext={hasNextLiquorPage}
               error={error}
+              loadMoreRef={loadMoreRef}
             />
           </>
         )}

@@ -89,12 +89,22 @@ public class LiquorDto {
                 .currentPrice(matchedPrice == null || matchedPrice.getCurrentPrice() == null ? 0 : matchedPrice.getCurrentPrice())
                 .originalPrice(matchedPrice == null || matchedPrice.getOriginalPrice() == null ? 0 : matchedPrice.getOriginalPrice())
                 .discountPercent(matchedPrice == null ? 0 : matchedPrice.getDiscountPercent())
-                .imageUrl(matchedLiquor == null || matchedLiquor.getImageUrl() == null ? "" : matchedLiquor.getImageUrl())
+                .imageUrl(resolveImageUrl(whisky, matchedLiquor))
                 .productUrl(matchedLiquor == null || matchedLiquor.getProductUrl() == null ? "" : matchedLiquor.getProductUrl())
                 .source(matchedPrice == null || matchedPrice.getSource() == null ? "WHISKY_DB" : matchedPrice.getSource())
                 .fullname(productName)
                 .clazz(whisky.getClazz() == null && matchedLiquor != null ? matchedLiquor.getClazz() : whisky.getClazz())
                 .updatedAt(matchedPrice == null ? whisky.getUpdatedAt() : matchedPrice.getCrawledAt())
                 .build();
+    }
+
+    private static String resolveImageUrl(Whisky whisky, Liquor matchedLiquor) {
+        if (whisky.getImageUrl() != null && !whisky.getImageUrl().isBlank()) {
+            return whisky.getImageUrl();
+        }
+        if (matchedLiquor != null && matchedLiquor.getImageUrl() != null) {
+            return matchedLiquor.getImageUrl();
+        }
+        return "";
     }
 }

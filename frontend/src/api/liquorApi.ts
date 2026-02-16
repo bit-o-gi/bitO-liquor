@@ -16,6 +16,22 @@ interface LiquorApiResponse {
   source: string;
 }
 
+interface LiquorPageApiResponse {
+  items: LiquorApiResponse[];
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
+type LiquorListApiResponse = LiquorApiResponse[];
+
+export interface LiquorPage {
+  items: Liquor[];
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
 function toFrontendLiquor(item: LiquorApiResponse): Liquor {
@@ -39,17 +55,40 @@ function toFrontendLiquor(item: LiquorApiResponse): Liquor {
   };
 }
 
-export async function fetchLiquors(searchQuery?: string, signal?: AbortSignal): Promise<Liquor[]> {
+interface FetchLiquorsParams {
+  searchQuery?: string;
+  page?: number;
+  size?: number;
+  signal?: AbortSignal;
+}
+
+export async function fetchLiquors({ searchQuery, page = 0, size = 24, signal }: FetchLiquorsParams = {}): Promise<LiquorPage> {
   const trimmed = searchQuery?.trim() ?? "";
+  const pagingQuery = `page=${page}&size=${size}`;
   const endpoint = trimmed
-    ? `/api/liquors/search?q=${encodeURIComponent(trimmed)}`
-    : "/api/liquors";
+    ? `/api/liquors/search?q=${encodeURIComponent(trimmed)}&${pagingQuery}`
+    : `/api/liquors?${pagingQuery}`;
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, { signal });
   if (!response.ok) {
     throw new Error(`주류 목록 조회 실패: ${response.status}`);
   }
 
-  const data = (await response.json()) as LiquorApiResponse[];
-  return data.map(toFrontendLiquor);
+  const data = (await response.json()) as LiquorPageApiResponse | LiquorListApiResponse;
+
+  if (Array.isArray(data)) {
+    return {
+      items: data.map(toFrontendLiquor),
+      page,
+      size: data.length,
+      hasNext: false,
+    };
+  }
+
+  return {
+    items: Array.isArray(data.items) ? data.items.map(toFrontendLiquor) : [],
+    page: typeof data.page === "number" ? data.page : page,
+    size: typeof data.size === "number" ? data.size : size,
+    hasNext: Boolean(data.hasNext),
+  };
 }

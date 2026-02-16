@@ -50,17 +50,19 @@
 - 타입체크 + 프로덕션 빌드: `npm run build` (`tsc -b && vite build`)
 - 린트: `npm run lint`
 - 빌드 미리보기: `npm run preview`
+- E2E 테스트: `npm run test:e2e` (headless Chromium)
+- E2E 헤디드 실행: `npm run test:e2e:headed`
+- E2E UI 모드: `npm run test:e2e:ui`
 
 ### 프론트엔드 단일 테스트 상태
 
-- 현재 `frontend/package.json`에는 `npm test` 스크립트가 없습니다.
-- 프론트 검증은 `npm run lint` + `npm run build`를 사용하세요.
-- 테스트를 추가한다면 스크립트도 함께 추가하고 이 문서에 반영하세요.
+- 현재 프론트 기본 검증은 `npm run lint` + `npm run build`입니다.
+- E2E는 Playwright를 사용하며 필요 시 `npm run test:e2e`를 실행하세요.
 
 ## 변경 유형별 검증 플로우
 
 - 백엔드만 변경: `./gradlew test` (또는 `:module:test`)
-- 프론트만 변경: `npm run lint` + `npm run build`
+- 프론트만 변경: `npm run lint` + `npm run build` (+ 필요 시 `npm run test:e2e`)
 - 양쪽 모두 변경: 백엔드/프론트 검증 모두 수행
 - 관련 검증 명령을 최소 1개 이상 실행하지 않았다면 완료로 보고하지 마세요.
 

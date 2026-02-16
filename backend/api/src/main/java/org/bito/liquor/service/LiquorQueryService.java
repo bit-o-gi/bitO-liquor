@@ -2,10 +2,14 @@ package org.bito.liquor.service;
 
 import lombok.RequiredArgsConstructor;
 import org.bito.liquor.common.dto.LiquorDto;
+import org.bito.liquor.common.dto.LiquorPageResponseDto;
 import org.bito.liquor.common.model.LiquorPrice;
 import org.bito.liquor.common.model.Whisky;
 import org.bito.liquor.common.repository.LiquorPriceRepository;
 import org.bito.liquor.common.repository.WhiskyRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -20,12 +24,25 @@ public class LiquorQueryService {
     private final WhiskyRepository whiskyRepository;
     private final LiquorPriceRepository liquorPriceRepository;
 
-    public List<LiquorDto> getAllLiquors() {
-        return toDtos(whiskyRepository.findAllByOrderByUpdatedAtDesc());
+    public LiquorPageResponseDto getAllLiquors(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Whisky> whiskies = whiskyRepository.findAllByOrderByUpdatedAtDesc(pageable);
+        return toPagedDto(whiskies, page, size);
     }
 
-    public List<LiquorDto> searchLiquors(String keyword) {
-        return toDtos(whiskyRepository.searchByKeyword(keyword));
+    public LiquorPageResponseDto searchLiquors(String keyword, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Whisky> whiskies = whiskyRepository.searchByKeyword(keyword, pageable);
+        return toPagedDto(whiskies, page, size);
+    }
+
+    private LiquorPageResponseDto toPagedDto(Page<Whisky> whiskies, int page, int size) {
+        return LiquorPageResponseDto.builder()
+                .items(toDtos(whiskies.getContent()))
+                .page(page)
+                .size(size)
+                .hasNext(whiskies.hasNext())
+                .build();
     }
 
     private List<LiquorDto> toDtos(List<Whisky> whiskies) {
