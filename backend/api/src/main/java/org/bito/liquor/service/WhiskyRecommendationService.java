@@ -8,7 +8,6 @@ import org.bito.liquor.common.dto.FlavorVectorRequestDto;
 import org.bito.liquor.common.dto.LiquorDto;
 import org.bito.liquor.common.dto.WhiskyRecommendationItemDto;
 import org.bito.liquor.common.dto.WhiskyRecommendationResponseDto;
-import org.bito.liquor.common.model.Liquor;
 import org.bito.liquor.common.model.LiquorPrice;
 import org.bito.liquor.common.model.Whisky;
 import org.bito.liquor.common.repository.LiquorPriceRepository;
@@ -18,7 +17,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,23 +41,23 @@ public class WhiskyRecommendationService {
                 sanitize(request.getBody())
         });
 
-        Map<Long, LiquorPrice> bestPriceByLiquorId = pickBestPriceByLiquorId(liquorPriceRepository.findAllOrderByUpdatedAtDesc());
-        WhiskyLookup whiskyLookup = buildWhiskyLookup(whiskyRepository.findAll());
-        List<ScoredLiquor> scored = new ArrayList<>();
+        PriceLookup priceLookup = buildPriceLookup(liquorPriceRepository.findAllOrderByUpdatedAtDesc());
+        List<Whisky> whiskies = whiskyRepository.findAll();
+        List<ScoredWhisky> scored = new ArrayList<>();
 
-        for (LiquorPrice price : bestPriceByLiquorId.values()) {
-            Liquor liquor = price.getLiquor();
-            double[] liquorVector = normalizeVector(buildLiquorVector(liquor, whiskyLookup));
-            double similarity = cosineSimilarity(userVector, liquorVector);
-            String reason = buildReason(liquor, userVector);
-            scored.add(new ScoredLiquor(price, similarity, reason));
+        for (Whisky whisky : whiskies) {
+            LiquorPrice matchedPrice = priceLookup.findMatch(whisky);
+            double[] whiskyVector = normalizeVector(buildWhiskyVector(whisky));
+            double similarity = cosineSimilarity(userVector, whiskyVector);
+            String reason = buildReason(whisky, userVector);
+            scored.add(new ScoredWhisky(whisky, matchedPrice, similarity, reason));
         }
 
         List<WhiskyRecommendationItemDto> topRecommendations = scored.stream()
-                .sorted(Comparator.comparingDouble(ScoredLiquor::getSimilarity).reversed())
+                .sorted(Comparator.comparingDouble(ScoredWhisky::getSimilarity).reversed())
                 .limit(TOP_RECOMMENDATION_COUNT)
                 .map(item -> WhiskyRecommendationItemDto.builder()
-                        .liquor(LiquorDto.from(item.getLiquorPrice()))
+                        .liquor(LiquorDto.from(item.getWhisky(), item.getMatchedPrice()))
                         .similarity(round(item.getSimilarity()))
                         .reason(item.getReason())
                         .build())
@@ -79,18 +77,30 @@ public class WhiskyRecommendationService {
                 .build();
     }
 
-    private Map<Long, LiquorPrice> pickBestPriceByLiquorId(List<LiquorPrice> prices) {
-        Map<Long, LiquorPrice> selected = new LinkedHashMap<>();
+    private PriceLookup buildPriceLookup(List<LiquorPrice> prices) {
+        Map<String, LiquorPrice> byProductCode = new HashMap<>();
+        Map<String, LiquorPrice> byNormalizedName = new HashMap<>();
 
         for (LiquorPrice price : prices) {
-            Long liquorId = price.getLiquor().getId();
-            LiquorPrice existing = selected.get(liquorId);
-            if (existing == null || isBetterPrice(price, existing)) {
-                selected.put(liquorId, price);
+            String code = lower(price.getLiquor().getProductCode());
+            String normalizedName = lower(price.getLiquor().getNormalizedName());
+
+            if (!code.isBlank()) {
+                LiquorPrice existing = byProductCode.get(code);
+                if (existing == null || isBetterPrice(price, existing)) {
+                    byProductCode.put(code, price);
+                }
+            }
+
+            if (!normalizedName.isBlank()) {
+                LiquorPrice existing = byNormalizedName.get(normalizedName);
+                if (existing == null || isBetterPrice(price, existing)) {
+                    byNormalizedName.put(normalizedName, price);
+                }
             }
         }
 
-        return selected;
+        return new PriceLookup(byProductCode, byNormalizedName);
     }
 
     private boolean isBetterPrice(LiquorPrice candidate, LiquorPrice existing) {
@@ -99,14 +109,14 @@ public class WhiskyRecommendationService {
         return candidatePrice < existingPrice;
     }
 
-    private double[] buildLiquorVector(Liquor liquor, WhiskyLookup whiskyLookup) {
+    private double[] buildWhiskyVector(Whisky whisky) {
         double[] raw = new double[]{
-                sanitize(liquor.getSweet()),
-                sanitize(liquor.getSmoky()),
-                sanitize(liquor.getFruity()),
-                sanitize(liquor.getSpicy()),
-                sanitize(liquor.getWoody()),
-                sanitize(liquor.getBody())
+                sanitize(whisky.getSweet()),
+                sanitize(whisky.getSmoky()),
+                sanitize(whisky.getFruity()),
+                sanitize(whisky.getSpicy()),
+                sanitize(whisky.getWoody()),
+                sanitize(whisky.getBody())
         };
 
         boolean hasManualProfile = false;
@@ -116,45 +126,15 @@ public class WhiskyRecommendationService {
                 break;
             }
         }
+
         if (hasManualProfile) {
             return raw;
         }
 
-        Whisky matched = whiskyLookup.find(liquor);
-        if (matched != null) {
-            return new double[]{
-                    sanitize(matched.getSweet()),
-                    sanitize(matched.getSmoky()),
-                    sanitize(matched.getFruity()),
-                    sanitize(matched.getSpicy()),
-                    sanitize(matched.getWoody()),
-                    sanitize(matched.getBody())
-            };
-        }
-
-        return inferProfile(liquor);
+        return inferProfile(whisky);
     }
 
-    private WhiskyLookup buildWhiskyLookup(List<Whisky> whiskies) {
-        Map<String, Whisky> byCode = new HashMap<>();
-        Map<String, Whisky> byNormalizedName = new HashMap<>();
-
-        for (Whisky whisky : whiskies) {
-            String code = lower(whisky.getProductCode());
-            if (!code.isBlank() && !byCode.containsKey(code)) {
-                byCode.put(code, whisky);
-            }
-
-            String normalizedName = lower(whisky.getNormalizedName());
-            if (!normalizedName.isBlank() && !byNormalizedName.containsKey(normalizedName)) {
-                byNormalizedName.put(normalizedName, whisky);
-            }
-        }
-
-        return new WhiskyLookup(byCode, byNormalizedName);
-    }
-
-    private double[] inferProfile(Liquor liquor) {
+    private double[] inferProfile(Whisky whisky) {
         double sweet = 0.22;
         double smoky = 0.14;
         double fruity = 0.18;
@@ -162,26 +142,26 @@ public class WhiskyRecommendationService {
         double woody = 0.16;
         double body = 0.16;
 
-        String category = lower(liquor.getCategory());
-        String clazz = lower(liquor.getClazz());
-        String name = lower(liquor.getName());
-        double abv = liquor.getAlcoholPercent() == null ? 40.0 : liquor.getAlcoholPercent();
+        String category = lower(whisky.getCategory());
+        String clazz = lower(whisky.getClazz());
+        String name = lower(whisky.getProductName()) + " " + lower(whisky.getNormalizedName());
+        double abv = whisky.getAlcoholPercent() == null ? 40.0 : whisky.getAlcoholPercent();
 
-        if (containsAny(category, clazz, name, "bourbon")) {
+        if (containsAny(category, clazz, name, "bourbon", "버번")) {
             sweet += 0.14;
             woody += 0.08;
             spicy += 0.06;
         }
-        if (containsAny(category, clazz, name, "single malt", "malt")) {
+        if (containsAny(category, clazz, name, "single malt", "malt", "싱글몰트")) {
             fruity += 0.10;
             body += 0.08;
         }
-        if (containsAny(category, clazz, name, "irish")) {
+        if (containsAny(category, clazz, name, "irish", "아이리시")) {
             sweet += 0.08;
             fruity += 0.08;
             smoky -= 0.06;
         }
-        if (containsAny(category, clazz, name, "islay", "peat", "peated")) {
+        if (containsAny(category, clazz, name, "islay", "peat", "peated", "아일라", "피트")) {
             smoky += 0.24;
             woody += 0.06;
             sweet -= 0.06;
@@ -191,7 +171,7 @@ public class WhiskyRecommendationService {
             body += 0.06;
             sweet -= 0.04;
         }
-        if (containsAny(category, clazz, name, "sherry")) {
+        if (containsAny(category, clazz, name, "sherry", "셰리", "쉐리")) {
             sweet += 0.16;
             fruity += 0.12;
             woody += 0.04;
@@ -229,7 +209,7 @@ public class WhiskyRecommendationService {
         return typeMap.getOrDefault(key(first, second), title(first) + " " + title(second) + " Explorer");
     }
 
-    private String buildReason(Liquor liquor, double[] userVector) {
+    private String buildReason(Whisky whisky, double[] userVector) {
         List<Integer> rank = List.of(0, 1, 2, 3, 4, 5).stream()
                 .sorted((a, b) -> Double.compare(userVector[b], userVector[a]))
                 .toList();
@@ -243,8 +223,8 @@ public class WhiskyRecommendationService {
                 .append(toKorean(secondary))
                 .append(" 특성과 잘 맞습니다.");
 
-        if (liquor.getCategory() != null && !liquor.getCategory().isBlank()) {
-            reason.append(" ").append(liquor.getCategory()).append(" 스타일이라 입문에도 부담이 적습니다.");
+        if (whisky.getCategory() != null && !whisky.getCategory().isBlank()) {
+            reason.append(" ").append(whisky.getCategory()).append(" 스타일이라 입문에도 부담이 적습니다.");
         }
 
         return reason.toString();
@@ -333,30 +313,34 @@ public class WhiskyRecommendationService {
 
     @Getter
     @AllArgsConstructor
-    private static class ScoredLiquor {
-        private LiquorPrice liquorPrice;
+    private static class ScoredWhisky {
+        private Whisky whisky;
+        private LiquorPrice matchedPrice;
         private double similarity;
         private String reason;
     }
 
     @Getter
     @AllArgsConstructor
-    private static class WhiskyLookup {
-        private Map<String, Whisky> byProductCode;
-        private Map<String, Whisky> byNormalizedName;
+    private static class PriceLookup {
+        private Map<String, LiquorPrice> byProductCode;
+        private Map<String, LiquorPrice> byNormalizedName;
 
-        private Whisky find(Liquor liquor) {
-            String code = lowerSafe(liquor.getProductCode());
+        private LiquorPrice findMatch(Whisky whisky) {
+            String code = lowerSafe(whisky.getProductCode());
             if (!code.isBlank()) {
-                Whisky fromCode = byProductCode.get(code);
-                if (fromCode != null) {
-                    return fromCode;
+                LiquorPrice byCode = byProductCode.get(code);
+                if (byCode != null) {
+                    return byCode;
                 }
             }
 
-            String normalizedName = lowerSafe(liquor.getNormalizedName());
+            String normalizedName = lowerSafe(whisky.getNormalizedName());
             if (!normalizedName.isBlank()) {
-                return byNormalizedName.get(normalizedName);
+                LiquorPrice byName = byNormalizedName.get(normalizedName);
+                if (byName != null) {
+                    return byName;
+                }
             }
 
             return null;
