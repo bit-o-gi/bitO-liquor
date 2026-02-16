@@ -1,15 +1,65 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchLiquors } from "./api/liquorApi";
+import { fetchRecommendations } from "./api/preferenceApi";
+import PreferenceTest from "./components/PreferenceTest";
 import FeaturedPick from "./components/FeaturedPick";
 import LiquorGrid from "./components/LiquorGrid";
+import TestLoadingPage from "./components/TestLoadingPage";
+import TestResultPage from "./components/TestResultPage";
 import type { GroupedLiquor, Liquor } from "./types/liquor";
+import type { FlavorVector, PreferenceResult } from "./types/preference";
 import { groupLiquors } from "./utils/groupLiquors";
 
+type AppPage = "catalog" | "quiz" | "quiz-loading" | "quiz-result";
+
+function buildFallbackResult(vector: FlavorVector, liquors: GroupedLiquor[]): PreferenceResult {
+  const topDimensions = Object.entries(vector)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([key]) => key);
+
+  const fallback = liquors
+    .slice()
+    .sort((a, b) => a.lowest_price - b.lowest_price)
+    .slice(0, 5)
+    .map((liquor, index) => {
+      const bestVendor = liquor.vendors.reduce((a, b) => (a.current_price < b.current_price ? a : b));
+      const normalized = Math.max(0.55, 0.85 - index * 0.06);
+      return {
+        liquor: {
+          id: index,
+          product_code: `${liquor.name}-${bestVendor.source}`,
+          name: liquor.name,
+          brand: liquor.brand,
+          category: liquor.category,
+          volume: liquor.volume,
+          alcohol_percent: liquor.alcohol_percent,
+          country: liquor.country,
+          current_price: bestVendor.current_price,
+          original_price: bestVendor.original_price,
+          image_url: liquor.image_url,
+          product_url: bestVendor.product_url,
+          source: bestVendor.source,
+        },
+        similarity: normalized,
+        reason: `선호하신 ${topDimensions[0]}·${topDimensions[1]} 무드와 가격 접근성을 함께 고려한 추천입니다.`,
+      };
+    });
+
+  return {
+    type_name: "Flavor Explorer",
+    flavor_vector: vector,
+    recommendations: fallback,
+  };
+}
+
 export default function App() {
+  const [page, setPage] = useState<AppPage>("catalog");
   const [searchQuery, setSearchQuery] = useState("");
   const [liquors, setLiquors] = useState<Liquor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recommendationResult, setRecommendationResult] = useState<PreferenceResult | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,58 +92,131 @@ export default function App() {
 
   const groupedLiquors: GroupedLiquor[] = useMemo(() => groupLiquors(liquors), [liquors]);
 
+  async function handleQuizSubmit(vector: FlavorVector) {
+    setPage("quiz-loading");
+    const controller = new AbortController();
+    try {
+      const result = await fetchRecommendations(vector, controller.signal);
+      if (!result.recommendations.length) {
+        setRecommendationResult(buildFallbackResult(vector, groupedLiquors));
+      } else {
+        setRecommendationResult(result);
+      }
+    } catch {
+      setRecommendationResult(buildFallbackResult(vector, groupedLiquors));
+    } finally {
+      setPage("quiz-result");
+    }
+  }
+
+  function goHome() {
+    setPage("catalog");
+    setRecommendationResult(null);
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={goHome}
+              className="flex items-center gap-3"
+            >
               <span className="text-2xl">🥃</span>
               <h1 className="text-xl font-bold text-gray-900">Jururuk</h1>
-            </div>
-            <div className="relative flex-1 max-w-md">
-              <input
-                type="text"
-                placeholder="위스키 이름, 브랜드로 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all"
-              />
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </button>
+            <div className="flex items-center justify-end gap-3 w-full">
+              {page === "catalog" && (
+                <div className="relative flex-1 max-w-md">
+                  <input
+                    type="text"
+                    placeholder="위스키 이름, 브랜드로 검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all"
+                  />
+                  <svg
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
                   </svg>
-                </button>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               )}
+
+              <button
+                type="button"
+                onClick={() => setPage("quiz")}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-bold shadow hover:from-amber-600 hover:to-orange-600 transition-colors"
+              >
+                나의 위스키 취향 찾기
+              </button>
             </div>
           </div>
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {!searchQuery && !loading && !error && <FeaturedPick liquors={groupedLiquors} />}
-        <LiquorGrid
-          searchQuery={searchQuery}
-          liquors={groupedLiquors}
-          loading={loading}
-          error={error}
-        />
+        {page === "catalog" && (
+          <>
+            {!searchQuery && !loading && !error && <FeaturedPick liquors={groupedLiquors} />}
+            {!searchQuery && !loading && !error && (
+              <section className="mb-8 rounded-3xl border border-amber-100 bg-gradient-to-r from-amber-50 via-orange-50 to-white p-6 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Onboarding</p>
+                <h2 className="mt-1 text-2xl font-black text-gray-900">90초 성향 테스트로 나에게 맞는 위스키 찾기</h2>
+                <p className="mt-2 text-sm text-gray-600">10문항 설문을 완료하면 Flavor Vector 기반 Top 5 추천과 추천 이유를 보여드려요.</p>
+                <button
+                  type="button"
+                  onClick={() => setPage("quiz")}
+                  className="mt-4 px-5 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+                >
+                  테스트 시작하기
+                </button>
+              </section>
+            )}
+            <LiquorGrid
+              searchQuery={searchQuery}
+              liquors={groupedLiquors}
+              loading={loading}
+              error={error}
+            />
+          </>
+        )}
+
+        {page === "quiz" && (
+          <PreferenceTest
+            onSubmit={handleQuizSubmit}
+            onCancel={goHome}
+          />
+        )}
+
+        {page === "quiz-loading" && <TestLoadingPage />}
+
+        {page === "quiz-result" && recommendationResult && (
+          <TestResultPage
+            result={recommendationResult}
+            onRetry={() => setPage("quiz")}
+            onBackHome={goHome}
+          />
+        )}
       </main>
     </div>
   );
