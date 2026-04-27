@@ -26,6 +26,15 @@ interface LiquorPriceRow {
   crawled_at: string | null;
 }
 
+interface LiquorPriceHistoryRow {
+  id: number;
+  liquor_id: number;
+  source: string | null;
+  current_price: number | null;
+  original_price: number | null;
+  crawled_at: string | null;
+}
+
 interface LiquorUrlRow {
   id: number;
   liquor_id: number;
@@ -95,6 +104,7 @@ export async function applyIngestWrite(params: {
   }
 
   if (preview.priceAction !== 'skip') {
+    const crawledAt = new Date().toISOString();
     const existingPrices = await fetchSupabaseRows<LiquorPriceRow>('liquor_price', {
       select: 'id,liquor_id,source,current_price,original_price,crawled_at',
       filters: { liquor_id: liquorId, source: candidate.source.toUpperCase() },
@@ -107,6 +117,7 @@ export async function applyIngestWrite(params: {
         {
           current_price: candidate.currentPrice,
           original_price: candidate.originalPrice,
+          crawled_at: crawledAt,
         },
         { id: existingPrices[0].id },
       );
@@ -117,9 +128,21 @@ export async function applyIngestWrite(params: {
         source: candidate.source.toUpperCase(),
         current_price: candidate.currentPrice,
         original_price: candidate.originalPrice,
-        crawled_at: new Date().toISOString(),
+        crawled_at: crawledAt,
       });
       details.push(`inserted price:${insertedPrice.id}`);
+    }
+
+    // 시계열 적재: 차트가 forward-fill 시 옛 값에 갇히지 않도록 매 크롤마다 한 행 적재.
+    if (candidate.currentPrice != null || candidate.originalPrice != null) {
+      const insertedHistory = await insertSupabaseRow<LiquorPriceHistoryRow>('liquor_price_history', {
+        liquor_id: liquorId,
+        source: candidate.source.toUpperCase(),
+        current_price: candidate.currentPrice,
+        original_price: candidate.originalPrice,
+        crawled_at: crawledAt,
+      });
+      details.push(`inserted history:${insertedHistory.id}`);
     }
   }
 
